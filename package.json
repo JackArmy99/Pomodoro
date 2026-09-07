@@ -13,7 +13,9 @@
     "db:seed": "prisma db seed",
     "clients:add": "node scripts/add-clients.mjs",
     "db:reset": "prisma migrate reset",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "backup": "node scripts/backup.mjs",
+    "update": "node scripts/update.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

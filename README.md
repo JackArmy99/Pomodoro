@@ -37,9 +37,20 @@ migration, and the seed script (3 sample clients, briefs and opportunities).
 |---|---|
 | `npm run dev` | Start the app in development mode |
 | `npm run build` / `npm run start` | Production build and run |
+| `npm run update` | Pull the latest code + apply DB changes **without losing data** (backs up first) |
+| `npm run backup` | Save a timestamped copy of your database to `prisma/backups/` |
 | `npm run db:studio` | Open Prisma Studio to browse/edit the database |
 | `npm run db:seed` | Re-load the sample data |
-| `npm run db:reset` | Wipe and rebuild the database (then re-seeds) |
+| `npm run db:reset` | **Wipes** and rebuilds the database with sample data — only for a clean start |
+
+### Updating safely
+
+Stop the app (`Ctrl+C`), then run `npm run update` and follow its final
+instruction (`npm run dev`). It backs up your database, pulls the latest code,
+and applies migrations while keeping your data.
+
+To restore a backup: stop the app, then copy a file from `prisma/backups/` over
+`prisma/dev.db`.
 
 ## What's in Slice 1
 

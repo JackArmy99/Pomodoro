@@ -9,9 +9,10 @@ next-env.d.ts
 # production
 /build
 
-# local database (SQLite)
+# local database (SQLite) + backups
 /prisma/*.db
 /prisma/*.db-journal
+/prisma/backups/
 
 # environment (never commit secrets)
 .env
