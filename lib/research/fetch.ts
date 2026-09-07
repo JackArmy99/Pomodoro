@@ -4,19 +4,40 @@ import { summariseItem, hasApiKey } from "@/lib/anthropic";
 
 const parser = new Parser({ timeout: 15000 });
 
+// The firm's global "what to look for" steering, if set.
+async function globalInstructions(): Promise<string> {
+  const s = await prisma.setting.findUnique({
+    where: { key: "research_instructions" },
+  });
+  return s?.value ?? "";
+}
+
 // Run the AI summariser on one finding and attach suggested modules.
 // No-op (leaves the finding raw) when there's no API key.
-export async function processFinding(findingId: string): Promise<void> {
+// `sourceInstructions` adds steering specific to the source it came from.
+export async function processFinding(
+  findingId: string,
+  sourceInstructions?: string,
+): Promise<void> {
   if (!hasApiKey()) return;
 
   const finding = await prisma.finding.findUnique({ where: { id: findingId } });
   if (!finding) return;
 
-  const modules = await prisma.module.findMany({ select: { id: true, name: true } });
+  const [modules, global] = await Promise.all([
+    prisma.module.findMany({ select: { id: true, name: true } }),
+    globalInstructions(),
+  ]);
+
+  const instructions = [global, sourceInstructions]
+    .filter((s) => s && s.trim())
+    .join("\n\n");
+
   const result = await summariseItem({
     title: finding.title,
     content: finding.rawContent || finding.summary || finding.title,
     moduleNames: modules.map((m) => m.name),
+    instructions,
   });
   if (!result) return;
 
@@ -84,7 +105,7 @@ export async function fetchSourceById(sourceId: string): Promise<number> {
 
   // Summarise the new ones (skipped automatically if no API key).
   for (const id of createdIds) {
-    await processFinding(id);
+    await processFinding(id, source.instructions ?? undefined);
   }
 
   return createdIds.length;

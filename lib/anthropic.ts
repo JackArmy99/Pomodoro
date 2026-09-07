@@ -19,18 +19,24 @@ export async function summariseItem(input: {
   title: string;
   content: string;
   moduleNames: string[];
+  instructions?: string; // the firm's own steering, injected verbatim
 }): Promise<Summary | null> {
   if (!hasApiKey()) return null;
 
   const client = new Anthropic();
   const moduleList = input.moduleNames.join(", ");
 
+  const steer = input.instructions?.trim()
+    ? `\n\nStanding instructions from the firm (follow these closely):\n${input.instructions.trim()}`
+    : "";
+
   const system =
     "You help an EPM (CCH Tagetik) consultancy triage vendor news. " +
     "Given a news/article item, write a tight 2-3 sentence summary focused on " +
     "what changed and why it matters to clients, and pick which of the firm's " +
     "modules it relates to. Only choose modules from the provided list. " +
-    'Respond with ONLY valid JSON: {"summary": string, "modules": string[]}.';
+    'Respond with ONLY valid JSON: {"summary": string, "modules": string[]}.' +
+    steer;
 
   const user =
     `Firm's modules: ${moduleList}\n\n` +

@@ -50,9 +50,16 @@ model Source {
   type          String    @default("rss") // rss (pasted items need no Source)
   url           String
   moduleHint    String? // optional: a module this source usually concerns
+  instructions  String? // optional: extra steering for this specific source
   active        Boolean   @default(true)
   lastFetchedAt DateTime?
   createdAt     DateTime  @default(now())
+}
+
+// Simple key/value app settings (e.g. the global research instructions).
+model Setting {
+  key   String @id
+  value String
 }
 
 // A raw item picked up by the agents (or pasted in), waiting in the triage

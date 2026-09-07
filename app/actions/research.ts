@@ -8,13 +8,23 @@ import {
   processFinding,
 } from "@/lib/research/fetch";
 
+export async function saveInstructions(formData: FormData) {
+  const value = String(formData.get("instructions") ?? "").trim();
+  await prisma.setting.upsert({
+    where: { key: "research_instructions" },
+    create: { key: "research_instructions", value },
+    update: { value },
+  });
+  revalidatePath("/research");
+}
+
 export async function createSource(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const url = String(formData.get("url") ?? "").trim();
   if (!name || !url) return;
-  const moduleHint = String(formData.get("moduleHint") ?? "").trim() || null;
+  const instructions = String(formData.get("instructions") ?? "").trim() || null;
 
-  await prisma.source.create({ data: { name, url, moduleHint } });
+  await prisma.source.create({ data: { name, url, instructions } });
   revalidatePath("/research");
 }
 

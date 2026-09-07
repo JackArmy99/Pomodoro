@@ -8,6 +8,7 @@ import {
   fetchNow,
   fetchOneSource,
   ingestPaste,
+  saveInstructions,
   summariseFinding,
 } from "@/app/actions/research";
 import { formatDate } from "@/lib/format";
@@ -15,16 +16,18 @@ import { formatDate } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function ResearchPage() {
-  const [findings, sources] = await Promise.all([
+  const [findings, sources, instructionsSetting] = await Promise.all([
     prisma.finding.findMany({
       where: { status: "pending" },
       include: { modules: { include: { module: true } } },
       orderBy: { createdAt: "desc" },
     }),
     prisma.source.findMany({ orderBy: { name: "asc" } }),
+    prisma.setting.findUnique({ where: { key: "research_instructions" } }),
   ]);
 
   const aiOn = hasApiKey();
+  const instructions = instructionsSetting?.value ?? "";
 
   return (
     <div className="space-y-8">
@@ -45,6 +48,31 @@ export default async function ResearchPage() {
           without it — they just show the raw text.
         </div>
       )}
+
+      {/* What the agents look for */}
+      <section className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-900">
+          What the agents look for
+        </h2>
+        <p className="text-xs text-slate-500">
+          Tell the summariser, in your own words, what to prioritise and what to
+          ignore. This steers every summary and module suggestion.
+        </p>
+        <form action={saveInstructions} className="space-y-2">
+          <textarea
+            name="instructions"
+            rows={4}
+            defaultValue={instructions}
+            placeholder="e.g. Prioritise regulatory changes affecting Consolidation and ESG. Flag new modules, pricing changes, and end-of-support notices. Ignore marketing and events."
+            className="field"
+          />
+          <div className="flex justify-end">
+            <button type="submit" className="btn-ghost">
+              Save instructions
+            </button>
+          </div>
+        </form>
+      </section>
 
       {/* Inbox */}
       <section className="space-y-3">
@@ -241,6 +269,18 @@ export default async function ResearchPage() {
               placeholder="https://…/feed.xml"
               className="field"
               required
+            />
+          </div>
+          <div className="w-full">
+            <label className="label" htmlFor="src-instructions">
+              Notes for this source{" "}
+              <span className="font-normal text-slate-400">(optional steering)</span>
+            </label>
+            <input
+              id="src-instructions"
+              name="instructions"
+              placeholder="e.g. This is the ESG product blog — focus on CSRD/ESRS changes."
+              className="field"
             />
           </div>
           <button type="submit" className="btn-ghost">
