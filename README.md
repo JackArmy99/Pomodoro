@@ -48,9 +48,16 @@ migration, and the seed script (3 sample clients, briefs and opportunities).
   clients they're relevant to.
 - **Opportunities** — leads with a stage (open → pursuing → won/lost), value,
   likelihood, deadline, next step, optionally sparked by a brief.
-- **Per-client view** — one page aggregating a client's briefs and opportunities.
+- **Per-client view** — one page aggregating a client's modules, people, tasks,
+  briefs and opportunities.
+- **Modules & licences** — each client's Tagetik modules, marked **In use** vs
+  **Licensed** (owned but unused = an upsell opening), editable with + / − per
+  client. The **Modules** page shows who's affected by any module.
 - **Filters / quick views** — filter briefs by client or source type, clients by
   active/prospect, opportunities grouped by stage on the Hub.
+
+The client + module data is loaded from `prisma/client-modules.json`. To add new
+clients from that file without wiping anything, run `npm run clients:add`.
 
 ## Project structure
 

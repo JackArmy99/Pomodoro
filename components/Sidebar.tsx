@@ -6,6 +6,7 @@ const mainLinks = [
   { href: "/", label: "Hub", hint: "My tasks" },
   { href: "/briefs", label: "Briefs" },
   { href: "/opportunities", label: "Opportunities" },
+  { href: "/modules", label: "Modules" },
   { href: "/clients", label: "All clients" },
 ];
 

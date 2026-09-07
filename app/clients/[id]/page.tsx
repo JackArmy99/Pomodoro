@@ -10,6 +10,7 @@ import BriefForm from "@/components/forms/BriefForm";
 import OpportunityForm from "@/components/forms/OpportunityForm";
 import TaskForm from "@/components/forms/TaskForm";
 import PersonForm from "@/components/forms/PersonForm";
+import ClientModules from "@/components/ClientModules";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function ClientDetailPage({
   const client = await prisma.client.findUnique({
     where: { id: params.id },
     include: {
+      modules: { include: { module: true } },
       people: { orderBy: { createdAt: "asc" } },
       briefs: {
         include: { brief: { include: { clients: { include: { client: true } } } } },
@@ -39,14 +41,18 @@ export default async function ClientDetailPage({
 
   if (!client) notFound();
 
-  const [allClients, clientBriefs] = await Promise.all([
+  const [allClients, clientBriefs, allModules] = await Promise.all([
     prisma.client.findMany({ orderBy: { name: "asc" } }),
     prisma.brief.findMany({
       where: { clients: { some: { clientId: client.id } } },
       orderBy: { createdAt: "desc" },
       select: { id: true, title: true },
     }),
+    prisma.module.findMany({ orderBy: { name: "asc" } }),
   ]);
+
+  const currentModules: Record<string, string> = {};
+  for (const cm of client.modules) currentModules[cm.moduleId] = cm.status;
 
   const briefs = client.briefs
     .map((bc) => bc.brief)
@@ -92,6 +98,13 @@ export default async function ClientDetailPage({
           </button>
         </form>
       </header>
+
+      <ClientModules
+        clientId={client.id}
+        hosting={client.hosting}
+        modules={allModules}
+        current={currentModules}
+      />
 
       {/* People — identified by initials only. */}
       <section className="card space-y-3">

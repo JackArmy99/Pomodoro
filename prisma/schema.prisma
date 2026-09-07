@@ -19,17 +19,38 @@ datasource db {
 // hub hangs off clients. `name` holds the CODE NAME — no real names stored, so
 // it's safe to share screens and information.
 model Client {
-  id            String        @id @default(cuid())
+  id            String          @id @default(cuid())
   name          String // code name, e.g. "Falcon"
-  type          String        @default("active") // "active" | "prospect"
-  color         String        @default("#6366f1")
+  type          String          @default("active") // "active" | "prospect"
+  color         String          @default("#6366f1")
+  hosting       String? // "SaaS Public" | "SaaS Private" | "On Premises"
   notes         String?
-  ownerId       String        @default("me") // becomes a real user id once teammates log in
-  createdAt     DateTime      @default(now())
+  ownerId       String          @default("me") // becomes a real user id once teammates log in
+  createdAt     DateTime        @default(now())
   briefs        BriefClient[]
   opportunities Opportunity[]
   tasks         Task[]
   people        Person[]
+  modules       ClientModule[]
+}
+
+// A Tagetik product/module in the catalogue (Consolidation, ETL, ESG, …).
+model Module {
+  id      String         @id @default(cuid())
+  name    String         @unique
+  clients ClientModule[]
+}
+
+// Which modules a client has, and whether they actively use it or just own the
+// licence. "licensed" (owned, not in use) is a ready-made upsell signal.
+model ClientModule {
+  clientId String
+  moduleId String
+  status   String @default("in_use") // "in_use" | "licensed"
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([clientId, moduleId])
 }
 
 // A contact at a client, identified only by INITIALS for confidentiality.

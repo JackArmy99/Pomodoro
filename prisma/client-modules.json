@@ -1,0 +1,332 @@
+{
+  "modules": [
+    "Analytical Information Hub",
+    "Budgeting & Planning",
+    "Collaborative Office",
+    "Consolidation",
+    "ETL",
+    "Financial Close & Fast Close",
+    "Foundation",
+    "IFRS 16",
+    "MS Dynamics AX",
+    "Machine Learning AA",
+    "PowerPoint",
+    "SmartInsight",
+    "Solvency II"
+  ],
+  "order": [
+    "CIRCUIT",
+    "TIDE",
+    "SILICA",
+    "BRIDGE",
+    "ATELIER",
+    "MASON",
+    "PIVOT",
+    "SONAR",
+    "AEGIS",
+    "ORCHID",
+    "TERMINAL",
+    "FOUNDRY",
+    "CLARKSON",
+    "RELAY",
+    "POLAR",
+    "OPTIC",
+    "THERMAL",
+    "FLOW",
+    "HELIX",
+    "ROADGUARD",
+    "MUNICH",
+    "BEAUTY",
+    "KEYSTONE",
+    "HORIZON"
+  ],
+  "clients": {
+    "CIRCUIT": {
+      "hosting": "SaaS Private",
+      "inUse": [
+        "Consolidation",
+        "IFRS 16",
+        "ETL",
+        "Analytical Information Hub"
+      ],
+      "licensed": [
+        "ETL",
+        "Foundation",
+        "IFRS 16",
+        "SmartInsight",
+        "Consolidation"
+      ]
+    },
+    "TIDE": {
+      "hosting": "On Premises",
+      "inUse": [
+        "Consolidation",
+        "ETL"
+      ],
+      "licensed": [
+        "Consolidation",
+        "ETL",
+        "MS Dynamics AX"
+      ]
+    },
+    "SILICA": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "Budgeting & Planning",
+        "ETL"
+      ],
+      "licensed": [
+        "ETL",
+        "Foundation",
+        "Financial Close & Fast Close",
+        "Collaborative Office",
+        "Consolidation",
+        "SmartInsight",
+        "Budgeting & Planning"
+      ]
+    },
+    "BRIDGE": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation"
+      ],
+      "licensed": [
+        "Foundation",
+        "ETL",
+        "Consolidation"
+      ]
+    },
+    "ATELIER": {
+      "hosting": null,
+      "inUse": [],
+      "licensed": []
+    },
+    "MASON": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "ETL"
+      ],
+      "licensed": [
+        "ETL",
+        "Foundation",
+        "Consolidation",
+        "SmartInsight",
+        "Collaborative Office"
+      ]
+    },
+    "PIVOT": {
+      "hosting": null,
+      "inUse": [],
+      "licensed": []
+    },
+    "SONAR": {
+      "hosting": "SaaS Private",
+      "inUse": [],
+      "licensed": []
+    },
+    "AEGIS": {
+      "hosting": "On Premises",
+      "inUse": [
+        "Consolidation",
+        "Collaborative Office",
+        "ETL",
+        "Analytical Information Hub"
+      ],
+      "licensed": [
+        "Collaborative Office",
+        "Consolidation",
+        "ETL",
+        "Solvency II",
+        "Budgeting & Planning"
+      ]
+    },
+    "ORCHID": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "ETL"
+      ],
+      "licensed": [
+        "ETL",
+        "Foundation",
+        "Consolidation",
+        "Budgeting & Planning",
+        "SmartInsight",
+        "Collaborative Office",
+        "Machine Learning AA"
+      ]
+    },
+    "TERMINAL": {
+      "hosting": "On Premises",
+      "inUse": [
+        "Consolidation",
+        "IFRS 16",
+        "Collaborative Office",
+        "ETL"
+      ],
+      "licensed": [
+        "PowerPoint",
+        "ETL",
+        "IFRS 16",
+        "Collaborative Office",
+        "Consolidation"
+      ]
+    },
+    "FOUNDRY": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "Analytical Information Hub"
+      ],
+      "licensed": [
+        "Collaborative Office",
+        "Consolidation",
+        "Budgeting & Planning"
+      ]
+    },
+    "CLARKSON": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "Collaborative Office",
+        "ETL"
+      ],
+      "licensed": [
+        "Foundation",
+        "ETL",
+        "Consolidation",
+        "Budgeting & Planning",
+        "Collaborative Office"
+      ]
+    },
+    "RELAY": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "ETL"
+      ],
+      "licensed": [
+        "ETL",
+        "Foundation",
+        "Financial Close & Fast Close",
+        "SmartInsight",
+        "Collaborative Office",
+        "Budgeting & Planning",
+        "Machine Learning AA",
+        "Consolidation"
+      ]
+    },
+    "POLAR": {
+      "hosting": null,
+      "inUse": [],
+      "licensed": []
+    },
+    "OPTIC": {
+      "hosting": null,
+      "inUse": [],
+      "licensed": []
+    },
+    "THERMAL": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "Collaborative Office",
+        "Budgeting & Planning"
+      ],
+      "licensed": [
+        "ETL",
+        "Foundation",
+        "Financial Close & Fast Close",
+        "SmartInsight",
+        "Collaborative Office",
+        "Budgeting & Planning",
+        "Consolidation",
+        "Machine Learning AA"
+      ]
+    },
+    "FLOW": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "Collaborative Office",
+        "ETL"
+      ],
+      "licensed": [
+        "Financial Close & Fast Close",
+        "ETL",
+        "Foundation",
+        "SmartInsight",
+        "Collaborative Office",
+        "Consolidation"
+      ]
+    },
+    "HELIX": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "ETL",
+        "Collaborative Office"
+      ],
+      "licensed": [
+        "ETL",
+        "SmartInsight",
+        "Foundation",
+        "Financial Close & Fast Close",
+        "Collaborative Office",
+        "Budgeting & Planning",
+        "Consolidation",
+        "Machine Learning AA"
+      ]
+    },
+    "ROADGUARD": {
+      "hosting": "On Premises",
+      "inUse": [
+        "Consolidation",
+        "Solvency II",
+        "ETL"
+      ],
+      "licensed": [
+        "ETL",
+        "Collaborative Office",
+        "Consolidation",
+        "Solvency II"
+      ]
+    },
+    "MUNICH": {
+      "hosting": null,
+      "inUse": [],
+      "licensed": []
+    },
+    "BEAUTY": {
+      "hosting": "SaaS Public",
+      "inUse": [
+        "Consolidation",
+        "Collaborative Office",
+        "Budgeting & Planning",
+        "ETL"
+      ],
+      "licensed": [
+        "ETL",
+        "SmartInsight",
+        "Foundation",
+        "Budgeting & Planning",
+        "Consolidation",
+        "Collaborative Office",
+        "Financial Close & Fast Close",
+        "Machine Learning AA"
+      ]
+    },
+    "KEYSTONE": {
+      "hosting": null,
+      "inUse": [],
+      "licensed": []
+    },
+    "HORIZON": {
+      "hosting": null,
+      "inUse": [],
+      "licensed": []
+    }
+  }
+}

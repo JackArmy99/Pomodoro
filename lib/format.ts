@@ -51,6 +51,22 @@ export const URGENCY_STYLES: Record<string, string> = {
   urgent: "bg-rose-100 text-rose-700 border-rose-200",
 };
 
+export const MODULE_STATUS_LABELS: Record<string, string> = {
+  in_use: "In use",
+  licensed: "Licensed",
+};
+
+export const MODULE_STATUS_STYLES: Record<string, string> = {
+  in_use: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  licensed: "bg-amber-100 text-amber-800 border-amber-200",
+};
+
+export const HOSTING_OPTIONS = [
+  "SaaS Public",
+  "SaaS Private",
+  "On Premises",
+] as const;
+
 // Turn a minutes estimate into a friendly label, e.g. 90 -> "1h 30m".
 export function formatDuration(minutes: number | null | undefined): string {
   if (minutes == null || minutes <= 0) return "";
