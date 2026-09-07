@@ -1,0 +1,84 @@
+// EPM Intelligence & Opportunity Hub — data model.
+//
+// Slice 1 uses: Client, Brief, BriefClient, Opportunity.
+// The commented-out models are sketched so later slices (licenses, research
+// agents, outreach) can be added without reworking the schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Local dev = a SQLite file. Going hosted later = change provider to
+  // "postgresql" and point DATABASE_URL at a hosted database.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A company we support (active) or want to win (prospect). Everything in the
+// hub hangs off clients.
+model Client {
+  id            String        @id @default(cuid())
+  name          String
+  type          String        @default("active") // "active" | "prospect"
+  color         String        @default("#6366f1")
+  notes         String?
+  ownerId       String        @default("me") // becomes a real user id once teammates log in
+  createdAt     DateTime      @default(now())
+  briefs        BriefClient[]
+  opportunities Opportunity[]
+}
+
+// A piece of intelligence: a vendor update, newsletter item, or video digest.
+// Entered by hand in Slice 1; produced by research agents from Slice 3.
+model Brief {
+  id            String        @id @default(cuid())
+  title         String
+  summary       String        @default("")
+  sourceUrl     String? // traceability: link back to the original
+  sourceType    String        @default("manual") // manual | rss | newsletter | video | portal
+  publishedAt   DateTime?
+  ownerId       String        @default("me")
+  createdAt     DateTime      @default(now())
+  clients       BriefClient[]
+  opportunities Opportunity[]
+}
+
+// Many-to-many join: which clients a brief is relevant to.
+model BriefClient {
+  briefId  String
+  clientId String
+  brief    Brief  @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([briefId, clientId])
+}
+
+// A potential piece of work with a client or prospect — often sparked by a brief.
+model Opportunity {
+  id            String    @id @default(cuid())
+  title         String
+  description   String    @default("")
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  stage         String    @default("open") // open | pursuing | won | lost
+  value         Int? // rough deal value, whole currency units
+  likelihood    Int? // 0-100 %
+  nextStep      String?
+  deadline      DateTime?
+  originBriefId String?
+  originBrief   Brief?    @relation(fields: [originBriefId], references: [id], onDelete: SetNull)
+  ownerId       String    @default("me")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Sketched for later slices (not created until then):
+//
+// model License      { id, name, vendor }                       // Slice 2
+// model ClientLicense{ clientId, licenseId }                    // Slice 2
+// model Source       { id, kind, url, credentialsRef, schedule }// Slice 3
+// model EmailDraft   { id, opportunityId, clientId, body, status } // Slice 4
+// model Task         { id, title, clientId, priority, deadline, done } // Slice 6
+// ---------------------------------------------------------------------------
