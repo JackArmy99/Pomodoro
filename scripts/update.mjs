@@ -35,9 +35,10 @@ try {
     console.log(`Saved prisma/backups/dev-${stamp}.db`);
   }
 
-  // 2. Discard npm's automatic edit to package.json (safe — the repo copy wins).
-  step("Tidying package.json");
-  run("git restore package.json");
+  // 2. Discard npm's automatic edits to package files (safe — the repo copies
+  //    win). npm rewrites both of these locally, and either blocks git pull.
+  step("Tidying package files");
+  run("git restore package.json package-lock.json");
 
   // 3. Pull the latest code.
   step("Pulling latest code");
