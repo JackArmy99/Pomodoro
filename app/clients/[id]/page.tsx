@@ -2,10 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { deleteClient } from "@/app/actions/clients";
+import { deletePerson } from "@/app/actions/people";
 import BriefCard from "@/components/BriefCard";
 import OpportunityCard from "@/components/OpportunityCard";
+import TaskItem from "@/components/TaskItem";
 import BriefForm from "@/components/forms/BriefForm";
 import OpportunityForm from "@/components/forms/OpportunityForm";
+import TaskForm from "@/components/forms/TaskForm";
+import PersonForm from "@/components/forms/PersonForm";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +21,18 @@ export default async function ClientDetailPage({
   const client = await prisma.client.findUnique({
     where: { id: params.id },
     include: {
+      people: { orderBy: { createdAt: "asc" } },
       briefs: {
         include: { brief: { include: { clients: { include: { client: true } } } } },
       },
       opportunities: {
         include: { client: true, originBrief: true },
         orderBy: { createdAt: "desc" },
+      },
+      tasks: {
+        where: { done: false },
+        include: { client: true },
+        orderBy: { dueDate: "asc" },
       },
     },
   });
@@ -82,6 +92,57 @@ export default async function ClientDetailPage({
           </button>
         </form>
       </header>
+
+      {/* People — identified by initials only. */}
+      <section className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-900">
+          People ({client.people.length})
+        </h2>
+        {client.people.length > 0 && (
+          <ul className="flex flex-wrap gap-2">
+            {client.people.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm"
+              >
+                <span className="font-medium text-slate-800">{p.initials}</span>
+                {p.role && (
+                  <span className="text-xs text-slate-500">{p.role}</span>
+                )}
+                <form action={deletePerson}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <input type="hidden" name="clientId" value={client.id} />
+                  <button
+                    type="submit"
+                    className="text-slate-400 hover:text-rose-600"
+                    aria-label="Remove person"
+                  >
+                    ✕
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+        <PersonForm clientId={client.id} />
+      </section>
+
+      {/* This client's open tasks. */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-slate-900">
+          Open tasks ({client.tasks.length})
+        </h2>
+        {client.tasks.length === 0 ? (
+          <p className="card text-sm text-slate-500">
+            No open tasks for this client.
+          </p>
+        ) : (
+          client.tasks.map((t) => <TaskItem key={t.id} task={t} />)
+        )}
+        <div className="pt-1">
+          <TaskForm clients={allClients} presetClientId={client.id} />
+        </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="space-y-3">

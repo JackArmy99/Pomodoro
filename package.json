@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/ensure-env.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "setup": "prisma generate && prisma migrate dev --name init && prisma db seed",
+    "presetup": "node scripts/ensure-env.mjs",
+    "setup": "prisma generate && prisma migrate dev && prisma db seed",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset",

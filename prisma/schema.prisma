@@ -16,10 +16,11 @@ datasource db {
 }
 
 // A company we support (active) or want to win (prospect). Everything in the
-// hub hangs off clients.
+// hub hangs off clients. `name` holds the CODE NAME — no real names stored, so
+// it's safe to share screens and information.
 model Client {
   id            String        @id @default(cuid())
-  name          String
+  name          String // code name, e.g. "Falcon"
   type          String        @default("active") // "active" | "prospect"
   color         String        @default("#6366f1")
   notes         String?
@@ -27,6 +28,39 @@ model Client {
   createdAt     DateTime      @default(now())
   briefs        BriefClient[]
   opportunities Opportunity[]
+  tasks         Task[]
+  people        Person[]
+}
+
+// A contact at a client, identified only by INITIALS for confidentiality.
+model Person {
+  id        String   @id @default(cuid())
+  initials  String // e.g. "J.A."
+  role      String? // e.g. "FP&A lead"
+  notes     String?
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ownerId   String   @default("me")
+  createdAt DateTime @default(now())
+}
+
+// A personal to-do — the daily heartbeat of the hub. Separate from TopDesk
+// support tickets. "bookedInTeams" is a simple tick you set once you've put the
+// task into your own Teams/Outlook calendar (no calendar integration).
+model Task {
+  id             String    @id @default(cuid())
+  title          String
+  notes          String?
+  clientId       String?
+  client         Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  urgency        String    @default("normal") // low | normal | high | urgent
+  dueDate        DateTime?
+  estimateMinutes Int? // "time consumption"
+  bookedInTeams  Boolean   @default(false)
+  done           Boolean   @default(false)
+  ownerId        String    @default("me")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 // A piece of intelligence: a vendor update, newsletter item, or video digest.
@@ -80,5 +114,4 @@ model Opportunity {
 // model ClientLicense{ clientId, licenseId }                    // Slice 2
 // model Source       { id, kind, url, credentialsRef, schedule }// Slice 3
 // model EmailDraft   { id, opportunityId, clientId, body, status } // Slice 4
-// model Task         { id, title, clientId, priority, deadline, done } // Slice 6
 // ---------------------------------------------------------------------------

@@ -34,6 +34,33 @@ export const STAGE_STYLES: Record<string, string> = {
   lost: "bg-rose-100 text-rose-700 border-rose-200",
 };
 
+export const URGENCIES = ["low", "normal", "high", "urgent"] as const;
+export type Urgency = (typeof URGENCIES)[number];
+
+export const URGENCY_LABELS: Record<string, string> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Urgent",
+};
+
+export const URGENCY_STYLES: Record<string, string> = {
+  low: "bg-slate-100 text-slate-600 border-slate-200",
+  normal: "bg-sky-100 text-sky-700 border-sky-200",
+  high: "bg-amber-100 text-amber-800 border-amber-200",
+  urgent: "bg-rose-100 text-rose-700 border-rose-200",
+};
+
+// Turn a minutes estimate into a friendly label, e.g. 90 -> "1h 30m".
+export function formatDuration(minutes: number | null | undefined): string {
+  if (minutes == null || minutes <= 0) return "";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
 export function formatDate(value: Date | string | null | undefined): string {
   if (!value) return "";
   const d = typeof value === "string" ? new Date(value) : value;
