@@ -3,15 +3,18 @@ import { STAGES, STAGE_LABELS } from "@/lib/format";
 
 type ClientOption = { id: string; name: string };
 type BriefOption = { id: string; title: string };
+type CategoryOption = { id: string; name: string };
 
 export default function OpportunityForm({
   clients,
   briefs = [],
+  categories = [],
   presetClientId,
   presetBriefId,
 }: {
   clients: ClientOption[];
   briefs?: BriefOption[];
+  categories?: CategoryOption[];
   presetClientId?: string;
   presetBriefId?: string;
 }) {
@@ -77,6 +80,22 @@ export default function OpportunityForm({
           </select>
         </div>
       </div>
+
+      {categories.length > 0 && (
+        <div>
+          <label className="label" htmlFor="opp-category">
+            Category
+          </label>
+          <select id="opp-category" name="categoryId" className="field">
+            <option value="">— none —</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div>

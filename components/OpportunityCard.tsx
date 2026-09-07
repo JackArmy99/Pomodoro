@@ -22,6 +22,7 @@ type Opportunity = {
   deadline: Date | null;
   client: { id: string; name: string; type: string; color: string } | null;
   originBrief: { id: string; title: string } | null;
+  category?: { id: string; name: string } | null;
 };
 
 export default function OpportunityCard({
@@ -39,9 +40,16 @@ export default function OpportunityCard({
     <article className="card">
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-sm font-semibold text-slate-900">{o.title}</h3>
-        <span className={`chip ${STAGE_STYLES[o.stage] ?? ""}`}>
-          {STAGE_LABELS[o.stage] ?? o.stage}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          {o.category && (
+            <span className="chip border-violet-200 bg-violet-50 text-violet-700">
+              {o.category.name}
+            </span>
+          )}
+          <span className={`chip ${STAGE_STYLES[o.stage] ?? ""}`}>
+            {STAGE_LABELS[o.stage] ?? o.stage}
+          </span>
+        </div>
       </div>
 
       {o.description && (

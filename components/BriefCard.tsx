@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { deleteBrief } from "@/app/actions/briefs";
 import { formatDate, SOURCE_LABELS } from "@/lib/format";
 import ClientBadge from "@/components/ClientBadge";
@@ -13,6 +14,7 @@ type Brief = {
   clients: {
     client: { id: string; name: string; type: string; color: string };
   }[];
+  modules?: { module: { id: string; name: string } }[];
 };
 
 export default function BriefCard({
@@ -35,7 +37,9 @@ export default function BriefCard({
             </span>
           </div>
           <h3 className="truncate text-sm font-semibold text-slate-900">
-            {brief.title}
+            <Link href={`/briefs/${brief.id}`} className="hover:underline">
+              {brief.title}
+            </Link>
           </h3>
         </div>
         <form action={deleteBrief}>
@@ -54,6 +58,19 @@ export default function BriefCard({
         <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
           {brief.summary}
         </p>
+      )}
+
+      {brief.modules && brief.modules.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {brief.modules.map((bm) => (
+            <span
+              key={bm.module.id}
+              className="chip border-indigo-100 bg-indigo-50 text-indigo-600"
+            >
+              {bm.module.name}
+            </span>
+          ))}
+        </div>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

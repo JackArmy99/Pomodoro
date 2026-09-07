@@ -39,6 +39,14 @@ model Module {
   id      String         @id @default(cuid())
   name    String         @unique
   clients ClientModule[]
+  briefs  BriefModule[]
+}
+
+// A category of opportunity the firm defines for itself (you add your own).
+model OpportunityCategory {
+  id            String        @id @default(cuid())
+  name          String        @unique
+  opportunities Opportunity[]
 }
 
 // Which modules a client has, and whether they actively use it or just own the
@@ -96,7 +104,19 @@ model Brief {
   ownerId       String        @default("me")
   createdAt     DateTime      @default(now())
   clients       BriefClient[]
+  modules       BriefModule[]
   opportunities Opportunity[]
+}
+
+// Which modules a brief is about — drives "who's affected" via the client
+// module mapping.
+model BriefModule {
+  briefId  String
+  moduleId String
+  brief    Brief  @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  module   Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([briefId, moduleId])
 }
 
 // Many-to-many join: which clients a brief is relevant to.
@@ -123,6 +143,8 @@ model Opportunity {
   deadline      DateTime?
   originBriefId String?
   originBrief   Brief?    @relation(fields: [originBriefId], references: [id], onDelete: SetNull)
+  categoryId    String?
+  category      OpportunityCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   ownerId       String    @default("me")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

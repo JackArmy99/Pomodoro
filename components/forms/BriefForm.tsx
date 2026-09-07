@@ -2,12 +2,15 @@ import { createBrief } from "@/app/actions/briefs";
 import { SOURCE_TYPES, SOURCE_LABELS } from "@/lib/format";
 
 type ClientOption = { id: string; name: string };
+type ModuleOption = { id: string; name: string };
 
 export default function BriefForm({
   clients,
+  modules = [],
   presetClientId,
 }: {
   clients: ClientOption[];
+  modules?: ModuleOption[];
   presetClientId?: string;
 }) {
   return (
@@ -102,6 +105,30 @@ export default function BriefForm({
           </select>
         </div>
       </div>
+
+      {modules.length > 0 && (
+        <div>
+          <label className="label" htmlFor="brief-modules">
+            Modules this is about{" "}
+            <span className="font-normal text-slate-400">
+              (drives “who’s affected”; Ctrl/Cmd-click for several)
+            </span>
+          </label>
+          <select
+            id="brief-modules"
+            name="moduleIds"
+            multiple
+            size={Math.min(Math.max(modules.length, 2), 5)}
+            className="field"
+          >
+            {modules.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button type="submit" className="btn">

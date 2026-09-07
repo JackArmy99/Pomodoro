@@ -16,6 +16,10 @@ export async function createBrief(formData: FormData) {
     .getAll("clientIds")
     .map((v) => String(v))
     .filter(Boolean);
+  const moduleIds = formData
+    .getAll("moduleIds")
+    .map((v) => String(v))
+    .filter(Boolean);
 
   await prisma.brief.create({
     data: {
@@ -26,6 +30,9 @@ export async function createBrief(formData: FormData) {
       publishedAt,
       clients: {
         create: clientIds.map((clientId) => ({ clientId })),
+      },
+      modules: {
+        create: moduleIds.map((moduleId) => ({ moduleId })),
       },
     },
   });

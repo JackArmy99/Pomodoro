@@ -25,10 +25,17 @@ export default async function ClientDetailPage({
       modules: { include: { module: true } },
       people: { orderBy: { createdAt: "asc" } },
       briefs: {
-        include: { brief: { include: { clients: { include: { client: true } } } } },
+        include: {
+          brief: {
+            include: {
+              clients: { include: { client: true } },
+              modules: { include: { module: true } },
+            },
+          },
+        },
       },
       opportunities: {
-        include: { client: true, originBrief: true },
+        include: { client: true, originBrief: true, category: true },
         orderBy: { createdAt: "desc" },
       },
       tasks: {
@@ -41,7 +48,7 @@ export default async function ClientDetailPage({
 
   if (!client) notFound();
 
-  const [allClients, clientBriefs, allModules] = await Promise.all([
+  const [allClients, clientBriefs, allModules, categories] = await Promise.all([
     prisma.client.findMany({ orderBy: { name: "asc" } }),
     prisma.brief.findMany({
       where: { clients: { some: { clientId: client.id } } },
@@ -49,6 +56,7 @@ export default async function ClientDetailPage({
       select: { id: true, title: true },
     }),
     prisma.module.findMany({ orderBy: { name: "asc" } }),
+    prisma.opportunityCategory.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const currentModules: Record<string, string> = {};
@@ -101,6 +109,7 @@ export default async function ClientDetailPage({
 
       <ClientModules
         clientId={client.id}
+        clientName={client.name}
         hosting={client.hosting}
         modules={allModules}
         current={currentModules}
@@ -190,10 +199,15 @@ export default async function ClientDetailPage({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <BriefForm clients={allClients} presetClientId={client.id} />
+        <BriefForm
+          clients={allClients}
+          modules={allModules}
+          presetClientId={client.id}
+        />
         <OpportunityForm
           clients={allClients}
           briefs={clientBriefs}
+          categories={categories}
           presetClientId={client.id}
         />
       </div>

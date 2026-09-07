@@ -3,6 +3,7 @@ import {
   setClientHosting,
   setClientModule,
 } from "@/app/actions/modules";
+import { createOpportunityQuick } from "@/app/actions/opportunities";
 import {
   HOSTING_OPTIONS,
   MODULE_STATUS_LABELS,
@@ -13,11 +14,13 @@ type ModuleRow = { id: string; name: string };
 
 export default function ClientModules({
   clientId,
+  clientName,
   hosting,
   modules,
   current, // moduleId -> status
 }: {
   clientId: string;
+  clientName: string;
   hosting: string | null;
   modules: ModuleRow[];
   current: Record<string, string>;
@@ -76,6 +79,29 @@ export default function ClientModules({
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {/* Upsell shortcut: licensed-but-unused → an opportunity. */}
+                {status === "licensed" && (
+                  <form action={createOpportunityQuick}>
+                    <input type="hidden" name="clientId" value={clientId} />
+                    <input
+                      type="hidden"
+                      name="title"
+                      value={`Activate ${m.name} — ${clientName}`}
+                    />
+                    <input
+                      type="hidden"
+                      name="description"
+                      value={`${clientName} is licensed for ${m.name} but not using it — activation opportunity.`}
+                    />
+                    <button
+                      type="submit"
+                      className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-100"
+                      title="Create an opportunity to activate this licensed module"
+                    >
+                      → Opportunity
+                    </button>
+                  </form>
+                )}
                 <StatusButton
                   clientId={clientId}
                   moduleId={m.id}

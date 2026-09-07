@@ -18,13 +18,17 @@ export default async function BriefsPage({
   if (typeFilter) where.sourceType = typeFilter;
   if (clientFilter) where.clients = { some: { clientId: clientFilter } };
 
-  const [briefs, clients] = await Promise.all([
+  const [briefs, clients, modules] = await Promise.all([
     prisma.brief.findMany({
       where,
-      include: { clients: { include: { client: true } } },
+      include: {
+        clients: { include: { client: true } },
+        modules: { include: { module: true } },
+      },
       orderBy: { createdAt: "desc" },
     }),
     prisma.client.findMany({ orderBy: { name: "asc" } }),
+    prisma.module.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   const activeClientName = clientFilter
@@ -41,7 +45,7 @@ export default async function BriefsPage({
         </p>
       </header>
 
-      <BriefForm clients={clients} />
+      <BriefForm clients={clients} modules={modules} />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
