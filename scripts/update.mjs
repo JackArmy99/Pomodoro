@@ -43,11 +43,15 @@ try {
   step("Pulling latest code");
   run("git pull");
 
-  // 4. Apply new migrations without wiping data.
+  // 4. Install any new dependencies.
+  step("Installing dependencies");
+  run("npm install");
+
+  // 5. Apply new migrations without wiping data.
   step("Updating the database (keeping your data)");
   run("npx prisma migrate deploy");
 
-  // 5. Regenerate the client.
+  // 6. Regenerate the client.
   step("Finishing up");
   run("npx prisma generate");
 

@@ -36,10 +36,52 @@ model Client {
 
 // A Tagetik product/module in the catalogue (Consolidation, ETL, ESG, …).
 model Module {
-  id      String         @id @default(cuid())
-  name    String         @unique
-  clients ClientModule[]
-  briefs  BriefModule[]
+  id       String          @id @default(cuid())
+  name     String          @unique
+  clients  ClientModule[]
+  briefs   BriefModule[]
+  findings FindingModule[]
+}
+
+// A research source the agents monitor (an RSS/blog feed for now).
+model Source {
+  id            String    @id @default(cuid())
+  name          String
+  type          String    @default("rss") // rss (pasted items need no Source)
+  url           String
+  moduleHint    String? // optional: a module this source usually concerns
+  active        Boolean   @default(true)
+  lastFetchedAt DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+// A raw item picked up by the agents (or pasted in), waiting in the triage
+// inbox. Approving one turns it into a Brief.
+model Finding {
+  id          String          @id @default(cuid())
+  title       String
+  summary     String          @default("")
+  rawContent  String          @default("")
+  sourceUrl   String?
+  sourceType  String          @default("rss") // rss | paste
+  externalId  String?         @unique // dedupe key (feed guid/link)
+  publishedAt DateTime?
+  status      String          @default("pending") // pending | approved | dismissed
+  aiProcessed Boolean         @default(false)
+  briefId     String? // set once approved into a Brief
+  ownerId     String          @default("me")
+  createdAt   DateTime        @default(now())
+  modules     FindingModule[]
+}
+
+// Modules the summariser suggested a finding is about.
+model FindingModule {
+  findingId String
+  moduleId  String
+  finding   Finding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  module    Module  @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([findingId, moduleId])
 }
 
 // A category of opportunity the firm defines for itself (you add your own).

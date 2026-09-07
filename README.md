@@ -64,6 +64,11 @@ To restore a backup: stop the app, then copy a file from `prisma/backups/` over
 - **Modules & licences** — each client's Tagetik modules, marked **In use** vs
   **Licensed** (owned but unused = an upsell opening), editable with + / − per
   client. The **Modules** page shows who's affected by any module.
+- **Research inbox** — add RSS/blog feeds and hit *Fetch now*, or *paste* any
+  content (e.g. login-gated release notes). Items are summarised by Claude and
+  land in a triage inbox; *Approve* turns one into a Brief with module tags. AI
+  summaries need an `ANTHROPIC_API_KEY` in `.env` (see `.env.example`); without
+  one, items still arrive as raw text.
 - **Filters / quick views** — filter briefs by client or source type, clients by
   active/prospect, opportunities grouped by stage on the Hub.
 
