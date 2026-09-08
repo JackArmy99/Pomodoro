@@ -3,11 +3,13 @@ import { hasApiKey } from "@/lib/anthropic";
 import {
   approveFinding,
   createSource,
+  createWebTopic,
   deleteSource,
   dismissFinding,
   fetchNow,
   fetchOneSource,
   ingestPaste,
+  ingestVideo,
   saveInstructions,
   summariseFinding,
 } from "@/app/actions/research";
@@ -28,6 +30,8 @@ export default async function ResearchPage() {
 
   const aiOn = hasApiKey();
   const instructions = instructionsSetting?.value ?? "";
+  const rssSources = sources.filter((s) => s.type !== "web");
+  const webSources = sources.filter((s) => s.type === "web");
 
   return (
     <div className="space-y-8">
@@ -189,11 +193,118 @@ export default async function ResearchPage() {
         </form>
       </section>
 
-      {/* Sources */}
+      {/* Video */}
+      <section className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-900">Add a video</h2>
+        <p className="text-xs text-slate-500">
+          Paste a <strong>YouTube</strong> link — the caption track is pulled and
+          summarised. (Videos without captions need the audio/ASR path, coming
+          next.)
+        </p>
+        <form action={ingestVideo} className="flex items-end gap-2">
+          <div className="flex-1">
+            <input
+              name="url"
+              type="url"
+              placeholder="https://www.youtube.com/watch?v=…"
+              className="field"
+              required
+            />
+          </div>
+          <button type="submit" className="btn">
+            Add video
+          </button>
+        </form>
+      </section>
+
+      {/* Web research topics */}
+      <section className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-900">
+          Web research topics
+        </h2>
+        <p className="text-xs text-slate-500">
+          Give the agent a topic and it searches the wider internet each run
+          (via Claude), dropping what it finds into the inbox. Uses your API key
+          plus a small web-search cost per run.
+        </p>
+        {webSources.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {webSources.map((s) => (
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-800">
+                    {s.name}
+                  </p>
+                  <p className="truncate text-xs text-slate-400">“{s.query}”</p>
+                  {s.lastFetchedAt && (
+                    <p className="text-[11px] text-slate-400">
+                      Last run {formatDate(s.lastFetchedAt)}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <form action={fetchOneSource}>
+                    <input type="hidden" name="id" value={s.id} />
+                    <button type="submit" className="btn-ghost py-1">
+                      Run
+                    </button>
+                  </form>
+                  <form action={deleteSource}>
+                    <input type="hidden" name="id" value={s.id} />
+                    <button
+                      type="submit"
+                      className="text-xs text-slate-400 hover:text-rose-600"
+                    >
+                      Delete
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          action={createWebTopic}
+          className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3"
+        >
+          <div className="flex-1">
+            <label className="label" htmlFor="wt-name">
+              Topic name
+            </label>
+            <input
+              id="wt-name"
+              name="name"
+              placeholder="e.g. Competitor EPM launches"
+              className="field"
+              required
+            />
+          </div>
+          <div className="flex-1">
+            <label className="label" htmlFor="wt-query">
+              What to search for
+            </label>
+            <input
+              id="wt-query"
+              name="query"
+              placeholder="e.g. OneStream / Anaplan new features 2026"
+              className="field"
+              required
+            />
+          </div>
+          <button type="submit" className="btn-ghost">
+            Add topic
+          </button>
+        </form>
+      </section>
+
+      {/* RSS Sources */}
       <section className="card space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-900">
-            Sources ({sources.length})
+            RSS feeds ({rssSources.length})
           </h2>
           <form action={fetchNow}>
             <button type="submit" className="btn">
@@ -201,10 +312,13 @@ export default async function ResearchPage() {
             </button>
           </form>
         </div>
+        <p className="text-xs text-slate-500">
+          “Fetch now” runs every active feed <em>and</em> web topic.
+        </p>
 
-        {sources.length > 0 && (
+        {rssSources.length > 0 && (
           <ul className="divide-y divide-slate-100">
-            {sources.map((s) => (
+            {rssSources.map((s) => (
               <li
                 key={s.id}
                 className="flex flex-wrap items-center justify-between gap-2 py-2"

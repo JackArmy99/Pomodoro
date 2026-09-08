@@ -47,8 +47,9 @@ model Module {
 model Source {
   id            String    @id @default(cuid())
   name          String
-  type          String    @default("rss") // rss (pasted items need no Source)
-  url           String
+  type          String    @default("rss") // "rss" (feed) | "web" (search topic)
+  url           String    @default("") // feed URL for rss sources
+  query         String? // search terms for web-research sources
   moduleHint    String? // optional: a module this source usually concerns
   instructions  String? // optional: extra steering for this specific source
   active        Boolean   @default(true)

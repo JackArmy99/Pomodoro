@@ -7,6 +7,7 @@ import {
   fetchSourceById,
   processFinding,
 } from "@/lib/research/fetch";
+import { getYouTubeTranscript } from "@/lib/research/youtube";
 
 export async function saveInstructions(formData: FormData) {
   const value = String(formData.get("instructions") ?? "").trim();
@@ -24,7 +25,56 @@ export async function createSource(formData: FormData) {
   if (!name || !url) return;
   const instructions = String(formData.get("instructions") ?? "").trim() || null;
 
-  await prisma.source.create({ data: { name, url, instructions } });
+  await prisma.source.create({ data: { name, url, type: "rss", instructions } });
+  revalidatePath("/research");
+}
+
+// A web-research topic: Claude searches the wider internet for this each run.
+export async function createWebTopic(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const query = String(formData.get("query") ?? "").trim();
+  if (!name || !query) return;
+  const instructions = String(formData.get("instructions") ?? "").trim() || null;
+
+  await prisma.source.create({
+    data: { name, type: "web", query, instructions },
+  });
+  revalidatePath("/research");
+}
+
+// Ingest a YouTube video: pull its captions and summarise into the inbox.
+export async function ingestVideo(formData: FormData) {
+  const url = String(formData.get("url") ?? "").trim();
+  if (!url) return;
+
+  const existing = await prisma.finding.findUnique({ where: { externalId: url } });
+  if (existing) return; // already ingested
+
+  const result = await getYouTubeTranscript(url);
+  if (!result) {
+    // No captions — leave a note so it's visible; the audio/ASR path comes later.
+    await prisma.finding.create({
+      data: {
+        title: "Video has no captions — needs audio transcription",
+        rawContent: `Couldn't get a transcript for ${url}. Once audio transcription (ASR) is set up, capture the audio and upload it.`,
+        sourceUrl: url,
+        sourceType: "video",
+      },
+    });
+    revalidatePath("/research");
+    return;
+  }
+
+  const finding = await prisma.finding.create({
+    data: {
+      title: result.title,
+      rawContent: result.text.slice(0, 8000),
+      sourceUrl: url,
+      sourceType: "video",
+      externalId: url,
+    },
+  });
+  await processFinding(finding.id);
   revalidatePath("/research");
 }
 

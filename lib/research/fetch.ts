@@ -1,6 +1,7 @@
 import Parser from "rss-parser";
 import { prisma } from "@/lib/db";
 import { summariseItem, hasApiKey } from "@/lib/anthropic";
+import { runWebResearch } from "@/lib/research/web";
 
 const parser = new Parser({ timeout: 15000 });
 
@@ -58,11 +59,69 @@ export async function processFinding(
   ]);
 }
 
-// Fetch one RSS source: pull new items into the inbox, then summarise them.
+// A web-research source: let Claude search the wider internet for the topic
+// and drop the (already-summarised) findings into the inbox.
+async function fetchWebSource(source: {
+  id: string;
+  name: string;
+  query: string | null;
+  instructions: string | null;
+}): Promise<number> {
+  const [modules, global] = await Promise.all([
+    prisma.module.findMany({ select: { id: true, name: true } }),
+    globalInstructions(),
+  ]);
+  const byName = new Map(modules.map((m) => [m.name.toLowerCase(), m.id]));
+  const instructions = [global, source.instructions]
+    .filter((s) => s && s.trim())
+    .join("\n\n");
+
+  const items = await runWebResearch({
+    query: source.query || source.name,
+    instructions,
+    moduleNames: modules.map((m) => m.name),
+  });
+
+  let created = 0;
+  for (const item of items) {
+    const exists = await prisma.finding.findUnique({
+      where: { externalId: item.url },
+    });
+    if (exists) continue;
+
+    const moduleIds = item.modules
+      .map((n) => byName.get(n.toLowerCase()))
+      .filter((id): id is string => Boolean(id));
+
+    await prisma.finding.create({
+      data: {
+        title: item.title,
+        summary: item.summary,
+        rawContent: item.summary,
+        sourceUrl: item.url,
+        sourceType: "web",
+        externalId: item.url,
+        aiProcessed: true,
+        modules: { create: moduleIds.map((moduleId) => ({ moduleId })) },
+      },
+    });
+    created++;
+  }
+
+  await prisma.source.update({
+    where: { id: source.id },
+    data: { lastFetchedAt: new Date() },
+  });
+  return created;
+}
+
+// Fetch one source: RSS feed or web-research topic.
 // Returns the number of new findings created.
 export async function fetchSourceById(sourceId: string): Promise<number> {
   const source = await prisma.source.findUnique({ where: { id: sourceId } });
   if (!source || !source.active) return 0;
+
+  if (source.type === "web") return fetchWebSource(source);
 
   let feed;
   try {
