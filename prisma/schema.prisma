@@ -63,6 +63,16 @@ model Setting {
   value String
 }
 
+// A research brief the agents work from (uploaded PDF/Word or typed text).
+// Pressing "Run" sends the agents to research against it.
+model ResearchBrief {
+  id        String    @id @default(cuid())
+  name      String
+  content   String // extracted text of the brief
+  lastRunAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
 // A raw item picked up by the agents (or pasted in), waiting in the triage
 // inbox. Approving one turns it into a Brief.
 model Finding {

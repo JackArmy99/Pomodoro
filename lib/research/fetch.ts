@@ -59,28 +59,14 @@ export async function processFinding(
   ]);
 }
 
-// A web-research source: let Claude search the wider internet for the topic
-// and drop the (already-summarised) findings into the inbox.
-async function fetchWebSource(source: {
-  id: string;
-  name: string;
-  query: string | null;
-  instructions: string | null;
-}): Promise<number> {
-  const [modules, global] = await Promise.all([
-    prisma.module.findMany({ select: { id: true, name: true } }),
-    globalInstructions(),
-  ]);
-  const byName = new Map(modules.map((m) => [m.name.toLowerCase(), m.id]));
-  const instructions = [global, source.instructions]
-    .filter((s) => s && s.trim())
-    .join("\n\n");
-
-  const items = await runWebResearch({
-    query: source.query || source.name,
-    instructions,
-    moduleNames: modules.map((m) => m.name),
+// Turn web-research items into inbox findings (deduped, module-tagged).
+async function createWebFindings(
+  items: { title: string; url: string; summary: string; modules: string[] }[],
+): Promise<number> {
+  const modules = await prisma.module.findMany({
+    select: { id: true, name: true },
   });
+  const byName = new Map(modules.map((m) => [m.name.toLowerCase(), m.id]));
 
   let created = 0;
   for (const item of items) {
@@ -107,12 +93,60 @@ async function fetchWebSource(source: {
     });
     created++;
   }
+  return created;
+}
 
+// A web-research source: let Claude search the wider internet for the topic
+// and drop the (already-summarised) findings into the inbox.
+async function fetchWebSource(source: {
+  id: string;
+  name: string;
+  query: string | null;
+  instructions: string | null;
+}): Promise<number> {
+  const [modules, global] = await Promise.all([
+    prisma.module.findMany({ select: { id: true, name: true } }),
+    globalInstructions(),
+  ]);
+  const instructions = [global, source.instructions]
+    .filter((s) => s && s.trim())
+    .join("\n\n");
+
+  const items = await runWebResearch({
+    query: source.query || source.name,
+    instructions,
+    moduleNames: modules.map((m) => m.name),
+  });
+
+  const created = await createWebFindings(items);
   await prisma.source.update({
     where: { id: source.id },
     data: { lastFetchedAt: new Date() },
   });
   return created;
+}
+
+// Run web research against a full brief (uploaded/typed), not just a topic.
+export async function researchFromBrief(
+  name: string,
+  content: string,
+): Promise<number> {
+  const [modules, global] = await Promise.all([
+    prisma.module.findMany({ select: { id: true, name: true } }),
+    globalInstructions(),
+  ]);
+  const instructions = [global, content.slice(0, 12000)]
+    .filter((s) => s && s.trim())
+    .join("\n\n");
+
+  const items = await runWebResearch({
+    query: name,
+    instructions,
+    moduleNames: modules.map((m) => m.name),
+    maxItems: 8,
+  });
+
+  return createWebFindings(items);
 }
 
 // Fetch one source: RSS feed or web-research topic.

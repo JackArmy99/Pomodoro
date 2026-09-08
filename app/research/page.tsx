@@ -2,14 +2,17 @@ import { prisma } from "@/lib/db";
 import { hasApiKey } from "@/lib/anthropic";
 import {
   approveFinding,
+  createBrief,
   createSource,
   createWebTopic,
+  deleteBrief,
   deleteSource,
   dismissFinding,
   fetchNow,
   fetchOneSource,
   ingestPaste,
   ingestVideo,
+  runBrief,
   saveInstructions,
   summariseFinding,
 } from "@/app/actions/research";
@@ -18,7 +21,7 @@ import { formatDate } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function ResearchPage() {
-  const [findings, sources, instructionsSetting] = await Promise.all([
+  const [findings, sources, instructionsSetting, briefs] = await Promise.all([
     prisma.finding.findMany({
       where: { status: "pending" },
       include: { modules: { include: { module: true } } },
@@ -26,6 +29,7 @@ export default async function ResearchPage() {
     }),
     prisma.source.findMany({ orderBy: { name: "asc" } }),
     prisma.setting.findUnique({ where: { key: "research_instructions" } }),
+    prisma.researchBrief.findMany({ orderBy: { createdAt: "desc" } }),
   ]);
 
   const aiOn = hasApiKey();
@@ -73,6 +77,105 @@ export default async function ResearchPage() {
           <div className="flex justify-end">
             <button type="submit" className="btn-ghost">
               Save instructions
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* Research briefs — the driver */}
+      <section className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-900">Research briefs</h2>
+        <p className="text-xs text-slate-500">
+          Give the agents a brief to work from — upload a <strong>PDF</strong> or{" "}
+          <strong>Word</strong> file, or type it in. Press <strong>Run</strong>{" "}
+          and they research the wider internet against it, dropping results in the
+          inbox.
+        </p>
+
+        {briefs.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {briefs.map((b) => (
+              <li
+                key={b.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-800">
+                    {b.name}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    {b.lastRunAt
+                      ? `Last run ${formatDate(b.lastRunAt)}`
+                      : "Not run yet"}
+                    {" · "}
+                    {b.content.length.toLocaleString()} chars
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <form action={runBrief}>
+                    <input type="hidden" name="id" value={b.id} />
+                    <button type="submit" className="btn">
+                      Run
+                    </button>
+                  </form>
+                  <form action={deleteBrief}>
+                    <input type="hidden" name="id" value={b.id} />
+                    <button
+                      type="submit"
+                      className="text-xs text-slate-400 hover:text-rose-600"
+                    >
+                      Delete
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form
+          action={createBrief}
+          className="space-y-3 border-t border-slate-100 pt-3"
+        >
+          <div>
+            <label className="label" htmlFor="brief-name">
+              Brief name
+            </label>
+            <input
+              id="brief-name"
+              name="name"
+              placeholder="e.g. Weekly EPM market scan"
+              className="field"
+              required
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="brief-file">
+              Upload a PDF or Word file
+            </label>
+            <input
+              id="brief-file"
+              name="file"
+              type="file"
+              accept=".pdf,.docx,.txt"
+              className="field"
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="brief-content">
+              …or type the brief
+            </label>
+            <textarea
+              id="brief-content"
+              name="content"
+              rows={4}
+              placeholder="What should the agents research? Scope, priorities, competitors, modules, questions to answer…"
+              className="field"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" className="btn-ghost">
+              Save brief
             </button>
           </div>
         </form>

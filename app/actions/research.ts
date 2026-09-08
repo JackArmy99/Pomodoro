@@ -6,8 +6,10 @@ import {
   fetchAllActiveSources,
   fetchSourceById,
   processFinding,
+  researchFromBrief,
 } from "@/lib/research/fetch";
 import { getYouTubeTranscript } from "@/lib/research/youtube";
+import { extractText } from "@/lib/research/extract";
 
 export async function saveInstructions(formData: FormData) {
   const value = String(formData.get("instructions") ?? "").trim();
@@ -114,6 +116,52 @@ export async function ingestPaste(formData: FormData) {
   });
 
   await processFinding(finding.id); // summarise if a key is configured
+  revalidatePath("/research");
+}
+
+// Create a research brief from an uploaded file (PDF/Word) or typed text.
+export async function createBrief(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const typed = String(formData.get("content") ?? "").trim();
+  const file = formData.get("file");
+
+  let content = typed;
+  if (file instanceof File && file.size > 0) {
+    try {
+      content = await extractText(file);
+    } catch {
+      content = "";
+    }
+  }
+
+  if (!name && !content) return;
+  if (!content) return; // nothing readable — don't create an empty brief
+
+  await prisma.researchBrief.create({
+    data: { name: name || "Research brief", content },
+  });
+  revalidatePath("/research");
+}
+
+export async function deleteBrief(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.researchBrief.delete({ where: { id } });
+  revalidatePath("/research");
+}
+
+// The button: send the agents to research against a brief, results to the inbox.
+export async function runBrief(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const brief = await prisma.researchBrief.findUnique({ where: { id } });
+  if (!brief) return;
+
+  await researchFromBrief(brief.name, brief.content);
+  await prisma.researchBrief.update({
+    where: { id },
+    data: { lastRunAt: new Date() },
+  });
   revalidatePath("/research");
 }
 
