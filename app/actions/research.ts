@@ -1,60 +1,41 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import {
-  fetchAllActiveSources,
-  fetchSourceById,
-  processFinding,
-  researchFromBrief,
-} from "@/lib/research/fetch";
+import { processFinding, deepenFinding } from "@/lib/research/fetch";
 import { getYouTubeTranscript } from "@/lib/research/youtube";
-import { extractText } from "@/lib/research/extract";
 
-export async function saveInstructions(formData: FormData) {
-  const value = String(formData.get("instructions") ?? "").trim();
-  await prisma.setting.upsert({
-    where: { key: "research_instructions" },
-    create: { key: "research_instructions", value },
-    update: { value },
+// ---- Manual quick-adds to the inbox --------------------------------------
+
+// Paste bridge — for login-gated content you copy in yourself.
+export async function ingestPaste(formData: FormData) {
+  const title = String(formData.get("title") ?? "").trim();
+  const rawContent = String(formData.get("content") ?? "").trim();
+  if (!title && !rawContent) return;
+  const sourceUrl = String(formData.get("sourceUrl") ?? "").trim() || null;
+
+  const finding = await prisma.finding.create({
+    data: {
+      title: title || "(pasted item)",
+      rawContent: rawContent.slice(0, 8000),
+      sourceUrl,
+      sourceType: "paste",
+    },
   });
+  await processFinding(finding.id);
   revalidatePath("/research");
 }
 
-export async function createSource(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim();
-  const url = String(formData.get("url") ?? "").trim();
-  if (!name || !url) return;
-  const instructions = String(formData.get("instructions") ?? "").trim() || null;
-
-  await prisma.source.create({ data: { name, url, type: "rss", instructions } });
-  revalidatePath("/research");
-}
-
-// A web-research topic: Claude searches the wider internet for this each run.
-export async function createWebTopic(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim();
-  const query = String(formData.get("query") ?? "").trim();
-  if (!name || !query) return;
-  const instructions = String(formData.get("instructions") ?? "").trim() || null;
-
-  await prisma.source.create({
-    data: { name, type: "web", query, instructions },
-  });
-  revalidatePath("/research");
-}
-
-// Ingest a YouTube video: pull its captions and summarise into the inbox.
+// Ingest a YouTube video via its captions.
 export async function ingestVideo(formData: FormData) {
   const url = String(formData.get("url") ?? "").trim();
   if (!url) return;
-
   const existing = await prisma.finding.findUnique({ where: { externalId: url } });
-  if (existing) return; // already ingested
+  if (existing) return;
 
   const result = await getYouTubeTranscript(url);
   if (!result) {
-    // No captions — leave a note so it's visible; the audio/ASR path comes later.
     await prisma.finding.create({
       data: {
         title: "Video has no captions — needs audio transcription",
@@ -80,96 +61,14 @@ export async function ingestVideo(formData: FormData) {
   revalidatePath("/research");
 }
 
-export async function deleteSource(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
-  await prisma.source.delete({ where: { id } });
-  revalidatePath("/research");
-}
-
-export async function fetchNow() {
-  await fetchAllActiveSources();
-  revalidatePath("/research");
-}
-
-export async function fetchOneSource(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
-  await fetchSourceById(id);
-  revalidatePath("/research");
-}
-
-// Manual paste — the bridge for login-gated content you copy in yourself.
-export async function ingestPaste(formData: FormData) {
-  const title = String(formData.get("title") ?? "").trim();
-  const rawContent = String(formData.get("content") ?? "").trim();
-  if (!title && !rawContent) return;
-  const sourceUrl = String(formData.get("sourceUrl") ?? "").trim() || null;
-
-  const finding = await prisma.finding.create({
-    data: {
-      title: title || "(pasted item)",
-      rawContent: rawContent.slice(0, 8000),
-      sourceUrl,
-      sourceType: "paste",
-    },
-  });
-
-  await processFinding(finding.id); // summarise if a key is configured
-  revalidatePath("/research");
-}
-
-// Create a research brief from an uploaded file (PDF/Word) or typed text.
-export async function createBrief(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim();
-  const typed = String(formData.get("content") ?? "").trim();
-  const file = formData.get("file");
-
-  let content = typed;
-  if (file instanceof File && file.size > 0) {
-    try {
-      content = await extractText(file);
-    } catch {
-      content = "";
-    }
-  }
-
-  if (!name && !content) return;
-  if (!content) return; // nothing readable — don't create an empty brief
-
-  await prisma.researchBrief.create({
-    data: { name: name || "Research brief", content },
-  });
-  revalidatePath("/research");
-}
-
-export async function deleteBrief(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
-  await prisma.researchBrief.delete({ where: { id } });
-  revalidatePath("/research");
-}
-
-// The button: send the agents to research against a brief, results to the inbox.
-export async function runBrief(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  if (!id) return;
-  const brief = await prisma.researchBrief.findUnique({ where: { id } });
-  if (!brief) return;
-
-  await researchFromBrief(brief.name, brief.content);
-  await prisma.researchBrief.update({
-    where: { id },
-    data: { lastRunAt: new Date() },
-  });
-  revalidatePath("/research");
-}
+// ---- Triage --------------------------------------------------------------
 
 export async function summariseFinding(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await processFinding(id);
   revalidatePath("/research");
+  revalidatePath(`/research/${id}`);
 }
 
 export async function dismissFinding(formData: FormData) {
@@ -179,9 +78,49 @@ export async function dismissFinding(formData: FormData) {
   revalidatePath("/research");
 }
 
-// Approve → turn the finding into a Brief, carrying its suggested modules so
-// the "affected clients" flow works immediately.
-export async function approveFinding(formData: FormData) {
+// Edit a finding before approving — fix the summary, relevance, and modules.
+export async function updateFinding(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const summary = String(formData.get("summary") ?? "").trim();
+  const rel = String(formData.get("relevance") ?? "medium").toLowerCase();
+  const relevance = rel === "high" ? "high" : rel === "low" ? "low" : "medium";
+  const moduleIds = formData
+    .getAll("moduleIds")
+    .map((v) => String(v))
+    .filter(Boolean);
+
+  await prisma.$transaction([
+    prisma.finding.update({
+      where: { id },
+      data: { summary, relevance },
+    }),
+    prisma.findingModule.deleteMany({ where: { findingId: id } }),
+    ...moduleIds.map((moduleId) =>
+      prisma.findingModule.create({ data: { findingId: id, moduleId } }),
+    ),
+  ]);
+
+  revalidatePath("/research");
+  revalidatePath(`/research/${id}`);
+}
+
+// Dig deeper — send the agent back to research the topic more, optionally
+// steered by a note, and enrich this same finding's summary in place.
+export async function digDeeper(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const note = String(formData.get("note") ?? "").trim();
+  await deepenFinding(id, note);
+  revalidatePath("/research");
+  revalidatePath(`/research/${id}`);
+}
+
+// Approve → create a Brief (the intel record) and fan out to the chosen
+// clients: one Opportunity/Task/Brief-link each. `clientIds` are the ticked
+// clients; `type_<clientId>` selects the item type (defaults to opportunity).
+export async function finalizeApprove(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 
@@ -204,6 +143,42 @@ export async function approveFinding(formData: FormData) {
     },
   });
 
+  const clientIds = formData
+    .getAll("clientIds")
+    .map((v) => String(v))
+    .filter(Boolean);
+
+  for (const clientId of clientIds) {
+    const type = String(formData.get(`type_${clientId}`) ?? "opportunity");
+
+    // Always link the client to the brief (the intel record).
+    await prisma.briefClient
+      .create({ data: { briefId: brief.id, clientId } })
+      .catch(() => {});
+
+    if (type === "opportunity") {
+      await prisma.opportunity.create({
+        data: {
+          title: finding.title,
+          description: finding.summary,
+          clientId,
+          stage: "open",
+          originBriefId: brief.id,
+        },
+      });
+    } else if (type === "task") {
+      await prisma.task.create({
+        data: {
+          title: finding.title,
+          notes: finding.summary,
+          clientId,
+          urgency: finding.relevance === "high" ? "high" : "normal",
+        },
+      });
+    }
+    // type === "brief" → the BriefClient link above is enough.
+  }
+
   await prisma.finding.update({
     where: { id },
     data: { status: "approved", briefId: brief.id },
@@ -211,5 +186,7 @@ export async function approveFinding(formData: FormData) {
 
   revalidatePath("/research");
   revalidatePath("/briefs");
+  revalidatePath("/opportunities");
   revalidatePath("/");
+  redirect("/research");
 }

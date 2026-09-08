@@ -43,7 +43,7 @@ model Module {
   findings FindingModule[]
 }
 
-// A research source the agents monitor (an RSS/blog feed for now).
+// A research source a source/agent monitors (an RSS/blog feed or web topic).
 model Source {
   id            String    @id @default(cuid())
   name          String
@@ -53,8 +53,46 @@ model Source {
   moduleHint    String? // optional: a module this source usually concerns
   instructions  String? // optional: extra steering for this specific source
   active        Boolean   @default(true)
+  agentId       String?
+  agent         Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   lastFetchedAt DateTime?
   createdAt     DateTime  @default(now())
+}
+
+// A named research agent — a beat with its own briefing and its own mix of
+// sources/briefs. Findings it produces are tagged back to it.
+model Agent {
+  id             String          @id @default(cuid())
+  name           String
+  mission        String          @default("")
+  archetype      String          @default("finder") // finder | retriever | comparer
+  briefing       String          @default("") // the instructions that drive it
+  active         Boolean         @default(true)
+  allowedDomains String? // comma-separated hostnames the web search may use
+  blockedDomains String? // comma-separated hostnames to exclude
+  maxItems       Int             @default(6)
+  lookbackDays   Int             @default(30) // prefer items newer than this
+  lastRunAt      DateTime?
+  createdAt      DateTime        @default(now())
+  sources        Source[]
+  briefs         ResearchBrief[]
+  findings       Finding[]
+  runs           AgentRun[]
+}
+
+// One execution of an agent — the run log / history.
+model AgentRun {
+  id           String   @id @default(cuid())
+  agentId      String
+  agent        Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  ranAt        DateTime @default(now())
+  foundCount   Int      @default(0)
+  highCount    Int      @default(0)
+  medCount     Int      @default(0)
+  lowCount     Int      @default(0)
+  estCostCents Int      @default(0)
+  status       String   @default("ok") // ok | nothing_new | error
+  message      String?
 }
 
 // Simple key/value app settings (e.g. the global research instructions).
@@ -69,6 +107,8 @@ model ResearchBrief {
   id        String    @id @default(cuid())
   name      String
   content   String // extracted text of the brief
+  agentId   String?
+  agent     Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
   lastRunAt DateTime?
   createdAt DateTime  @default(now())
 }
@@ -76,20 +116,24 @@ model ResearchBrief {
 // A raw item picked up by the agents (or pasted in), waiting in the triage
 // inbox. Approving one turns it into a Brief.
 model Finding {
-  id          String          @id @default(cuid())
-  title       String
-  summary     String          @default("")
-  rawContent  String          @default("")
-  sourceUrl   String?
-  sourceType  String          @default("rss") // rss | paste
-  externalId  String?         @unique // dedupe key (feed guid/link)
-  publishedAt DateTime?
-  status      String          @default("pending") // pending | approved | dismissed
-  aiProcessed Boolean         @default(false)
-  briefId     String? // set once approved into a Brief
-  ownerId     String          @default("me")
-  createdAt   DateTime        @default(now())
-  modules     FindingModule[]
+  id              String          @id @default(cuid())
+  title           String
+  summary         String          @default("")
+  rawContent      String          @default("")
+  sourceUrl       String?
+  sourceType      String          @default("rss") // rss | paste | web | video
+  externalId      String?         @unique // dedupe key (feed guid/link)
+  publishedAt     DateTime?
+  status          String          @default("pending") // pending | approved | dismissed
+  aiProcessed     Boolean         @default(false)
+  relevance       String          @default("medium") // high | medium | low
+  relevanceReason String?
+  agentId         String? // which agent surfaced it (null = pasted / ad-hoc)
+  agent           Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  briefId         String? // set once approved into a Brief
+  ownerId         String          @default("me")
+  createdAt       DateTime        @default(now())
+  modules         FindingModule[]
 }
 
 // Modules the summariser suggested a finding is about.

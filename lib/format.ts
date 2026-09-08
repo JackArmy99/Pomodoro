@@ -67,6 +67,25 @@ export const HOSTING_OPTIONS = [
   "On Premises",
 ] as const;
 
+export const RELEVANCE_LABELS: Record<string, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+export const RELEVANCE_STYLES: Record<string, string> = {
+  high: "bg-rose-100 text-rose-700 border-rose-200",
+  medium: "bg-amber-100 text-amber-800 border-amber-200",
+  low: "bg-slate-100 text-slate-600 border-slate-200",
+};
+
+// Sort weight — high first.
+export const RELEVANCE_RANK: Record<string, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
 // Turn a minutes estimate into a friendly label, e.g. 90 -> "1h 30m".
 export function formatDuration(minutes: number | null | undefined): string {
   if (minutes == null || minutes <= 0) return "";

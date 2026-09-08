@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 
 const mainLinks = [
   { href: "/", label: "Hub", hint: "My tasks" },
-  { href: "/research", label: "Research", hint: "Inbox" },
+  { href: "/agents", label: "Agents", hint: "Research" },
+  { href: "/research", label: "Inbox" },
   { href: "/briefs", label: "Briefs" },
   { href: "/opportunities", label: "Opportunities" },
   { href: "/modules", label: "Modules" },

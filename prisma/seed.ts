@@ -26,6 +26,13 @@ async function main() {
   const data = loadData();
 
   // Clean slate so re-seeding is predictable.
+  await prisma.agentRun.deleteMany();
+  await prisma.findingModule.deleteMany();
+  await prisma.finding.deleteMany();
+  await prisma.source.deleteMany();
+  await prisma.researchBrief.deleteMany();
+  await prisma.agent.deleteMany();
+  await prisma.setting.deleteMany();
   await prisma.clientModule.deleteMany();
   await prisma.task.deleteMany();
   await prisma.opportunity.deleteMany();
@@ -66,8 +73,33 @@ async function main() {
     i++;
   }
 
+  // Two starter Finder agents, pre-briefed.
+  await prisma.agent.create({
+    data: {
+      name: "EPM Market & Vendor News",
+      mission: "Latest CCH Tagetik and EPM market developments",
+      archetype: "finder",
+      briefing:
+        "Track CCH Tagetik and the wider EPM market. Prioritise product " +
+        "releases, new modules, pricing changes, end-of-support notices and " +
+        "major regulatory changes (CSRD/ESRS, IFRS) that affect finance teams. " +
+        "Ignore generic marketing and event listings.",
+    },
+  });
+  await prisma.agent.create({
+    data: {
+      name: "Competitor Scanner",
+      mission: "Moves by OneStream, Anaplan, Oracle/SAP EPM, Pigment",
+      archetype: "finder",
+      briefing:
+        "Follow EPM competitors (OneStream, Anaplan, Oracle EPM, SAP, Pigment, " +
+        "Board). Surface launches, acquisitions, notable customer wins and " +
+        "positioning changes that could affect our clients or create openings.",
+    },
+  });
+
   console.log(
-    `Seeded ${data.order.length} clients and ${data.modules.length} modules.`,
+    `Seeded ${data.order.length} clients, ${data.modules.length} modules, 2 agents.`,
   );
 }
 

@@ -11,6 +11,8 @@ export function hasApiKey(): boolean {
 export type Summary = {
   summary: string;
   suggestedModules: string[];
+  relevance: "high" | "medium" | "low";
+  relevanceReason: string;
 };
 
 // Summarise a research item and suggest which of our modules it relates to.
@@ -33,9 +35,11 @@ export async function summariseItem(input: {
   const system =
     "You help an EPM (CCH Tagetik) consultancy triage vendor news. " +
     "Given a news/article item, write a tight 2-3 sentence summary focused on " +
-    "what changed and why it matters to clients, and pick which of the firm's " +
-    "modules it relates to. Only choose modules from the provided list. " +
-    'Respond with ONLY valid JSON: {"summary": string, "modules": string[]}.' +
+    "what changed and why it matters to clients, pick which of the firm's " +
+    "modules it relates to (only from the provided list), and score how " +
+    "important it is for the firm to act on. " +
+    'Respond with ONLY valid JSON: {"summary": string, "modules": string[], ' +
+    '"relevance": "high"|"medium"|"low", "relevanceReason": string}.' +
     steer;
 
   const user =
@@ -58,7 +62,13 @@ export async function summariseItem(input: {
     .trim();
 
   const parsed = parseJson(text);
-  if (!parsed) return { summary: text.slice(0, 600), suggestedModules: [] };
+  if (!parsed)
+    return {
+      summary: text.slice(0, 600),
+      suggestedModules: [],
+      relevance: "medium",
+      relevanceReason: "",
+    };
 
   // Keep only suggested modules that actually exist in our catalogue.
   const allowed = new Set(input.moduleNames.map((m) => m.toLowerCase()));
@@ -68,9 +78,18 @@ export async function summariseItem(input: {
         .filter((m: string) => allowed.has(m.toLowerCase()))
     : [];
 
+  const rel = String((parsed as { relevance?: unknown }).relevance ?? "")
+    .toLowerCase();
+
   return {
     summary: typeof parsed.summary === "string" ? parsed.summary : text,
     suggestedModules: suggested,
+    relevance: rel === "high" ? "high" : rel === "low" ? "low" : "medium",
+    relevanceReason:
+      typeof (parsed as { relevanceReason?: unknown }).relevanceReason ===
+      "string"
+        ? (parsed as { relevanceReason: string }).relevanceReason
+        : "",
   };
 }
 
