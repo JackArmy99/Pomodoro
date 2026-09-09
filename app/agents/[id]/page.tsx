@@ -20,6 +20,17 @@ function costLabel(cents: number): string {
   return `~£${(cents / 100).toFixed(2)}`;
 }
 
+// Turn a diagnostic reason code into a plain-English hint in run history.
+function runReason(message: string): string {
+  if (message === "paused")
+    return "search ran long and didn't finish (paused)";
+  if (message === "no_text") return "the model returned no answer";
+  if (message === "no_items") return "the model found nothing relevant";
+  if (message.startsWith("parse_failed"))
+    return "the model replied in prose, not the expected format";
+  return message;
+}
+
 export default async function AgentDetailPage({
   params,
 }: {
@@ -413,7 +424,7 @@ export default async function AgentDetailPage({
                   {r.status === "error"
                     ? `Error — ${r.message ?? "failed"}`
                     : r.status === "nothing_new"
-                      ? "Nothing new"
+                      ? `Nothing new${r.message ? ` — ${runReason(r.message)}` : ""}`
                       : `Found ${r.foundCount} · ${r.highCount} high / ${r.medCount} med / ${r.lowCount} low`}
                 </span>
                 <span className="text-slate-400">{costLabel(r.estCostCents)}</span>

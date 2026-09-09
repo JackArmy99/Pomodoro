@@ -2,6 +2,32 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — "Nothing new" root-caused + made self-diagnosing
+
+A briefing that produced a rich digest in Claude chat returned "Nothing new" in
+the app. Diagnosed as the app's structured contract failing invisibly, not a
+model/key problem.
+
+- **`pause_turn` was never handled** (prime suspect). web_search runs a
+  server-side loop that stops at `pause_turn` when it hits its cap;
+  `createWithSearch` did one `messages.create` and returned, so the final JSON
+  answer was often never produced → 0 items → "Nothing new". Now resumes the
+  paused turn (re-send messages + paused assistant turn, per the API's
+  server-tool pattern), up to 4 continuations.
+- **Made empty runs explain themselves.** `runWebResearch` returns a `reason`
+  (`paused` / `no_text` / `parse_failed:…` / `no_items`), threaded through
+  `RunTally` to `AgentRun.message` and shown in run history in plain English;
+  also `console.warn`'d server-side. "Nothing new" is no longer a black box.
+- **Hardened the JSON path**: max_tokens 3000 → 8000 (truncation), strip
+  ```code fences before parsing, and a post-search "reply with the JSON array
+  only" line in the user turn (where Haiku most needs it).
+- **Stopped silently dropping items**: a `title` is enough (url optional);
+  url-less synthesised items dedupe by normalised title instead of being
+  discarded for lacking a URL.
+- Deferred: structured outputs (`output_config.format`) as a guaranteed-valid
+  path — only if `parse_failed` persists, and after verifying it combines with
+  the web_search server tool.
+
 ## 2026-09 — Agents UX cleanup + cheap Test mode
 
 First real runs surfaced usability and cost issues; fixes agreed by Q&A.

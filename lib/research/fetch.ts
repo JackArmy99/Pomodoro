@@ -11,6 +11,9 @@ export type RunTally = {
   med: number;
   low: number;
   costCents: number;
+  // Diagnostic for a run that created nothing (from runWebResearch); undefined
+  // when items were created. Surfaced in the agent's run history.
+  reason?: string;
 };
 
 const emptyTally = (): RunTally => ({
@@ -92,9 +95,10 @@ export async function createWebFindings(
   const tally = emptyTally();
 
   for (const item of items) {
-    const exists = await prisma.finding.findUnique({
-      where: { externalId: item.url },
-    });
+    // Dedupe by url when present; otherwise by a normalised-title key so a
+    // synthesised item (no per-source url) still dedupes and isn't discarded.
+    const externalId = item.url || `title:${item.title.trim().toLowerCase()}`;
+    const exists = await prisma.finding.findUnique({ where: { externalId } });
     if (exists) continue;
 
     const moduleIds = item.modules
@@ -106,9 +110,9 @@ export async function createWebFindings(
         title: item.title,
         summary: item.summary,
         rawContent: item.summary,
-        sourceUrl: item.url,
+        sourceUrl: item.url || null,
         sourceType: "web",
-        externalId: item.url,
+        externalId,
         aiProcessed: true,
         relevance: item.relevance,
         relevanceReason: item.relevanceReason,
@@ -192,7 +196,7 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
     ]
       .filter((s) => s && s.trim())
       .join("\n\n");
-    const { items, costCents } = await runWebResearch({
+    const { items, costCents, reason } = await runWebResearch({
       query: topic,
       instructions,
       moduleNames,
@@ -202,6 +206,8 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
       blockedDomains: agent.blockedDomains,
     });
     total.costCents += costCents;
+    // Keep the first diagnostic seen, so an all-empty run explains itself.
+    if (reason && !total.reason) total.reason = reason;
     const t = await createWebFindings(items, agent.id);
     total.created += t.created;
     total.high += t.high;
@@ -319,7 +325,7 @@ export async function researchFromBrief(
     .filter((s) => s && s.trim())
     .join("\n\n");
 
-  const { items, costCents } = await runWebResearch({
+  const { items, costCents, reason } = await runWebResearch({
     query: content.slice(0, 1500) || name,
     instructions,
     moduleNames: modules.map((m) => m.name),
@@ -331,6 +337,7 @@ export async function researchFromBrief(
 
   const tally = await createWebFindings(items, opts?.agentId ?? null);
   tally.costCents += costCents;
+  tally.reason = reason;
   return tally;
 }
 
@@ -364,12 +371,13 @@ export async function deepenFinding(
 // One-off ad-hoc research (no saved agent, so no standing briefing to apply).
 export async function researchAdHoc(query: string): Promise<RunTally> {
   const modules = await prisma.module.findMany({ select: { name: true } });
-  const { items, costCents } = await runWebResearch({
+  const { items, costCents, reason } = await runWebResearch({
     query,
     moduleNames: modules.map((m) => m.name),
     maxItems: 6,
   });
   const tally = await createWebFindings(items, null);
   tally.costCents += costCents;
+  tally.reason = reason;
   return tally;
 }

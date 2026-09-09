@@ -10,7 +10,14 @@ export type WebItem = {
   relevanceReason: string;
 };
 
-export type WebResult = { items: WebItem[]; costCents: number };
+export type WebResult = {
+  items: WebItem[];
+  costCents: number;
+  // Why a run produced no items, so "Nothing new" is never a black box.
+  // undefined when items were found. One of: paused | no_text | parse_failed |
+  // no_items.
+  reason?: string;
+};
 
 function splitDomains(csv?: string | null): string[] {
   return (csv ?? "")
@@ -48,14 +55,26 @@ async function createWithSearch(
     else if (params.block?.length) tool.blocked_domains = params.block;
 
     try {
-      const response = await client.messages.create({
+      const base = {
         model: params.model,
         max_tokens: params.maxTokens,
         ...(params.system ? { system: params.system } : {}),
         tools: [tool] as unknown as Anthropic.Tool[],
-        messages: params.messages,
-      });
+      };
+      let messages = params.messages;
+      let response = await client.messages.create({ ...base, messages });
       workingToolType = type; // remember what works
+
+      // web_search runs a server-side loop that can stop with `pause_turn`
+      // when it hits its per-turn cap. Resume by re-sending the same messages
+      // plus the paused assistant turn — the server picks up where it left off.
+      // Without this, the model never emits its final JSON answer → 0 items.
+      let guard = 0;
+      while (response.stop_reason === "pause_turn" && guard < 4) {
+        messages = [...messages, { role: "assistant", content: response.content }];
+        response = await client.messages.create({ ...base, messages });
+        guard += 1;
+      }
       return response;
     } catch (err) {
       lastErr = err;
@@ -112,10 +131,13 @@ export async function runWebResearch(input: {
     `${input.moduleNames.join(", ")}.`;
 
   // Per-run details go in the user message so the system prefix stays cacheable.
+  // The final line lands *after* any tool use — where a weaker model most needs
+  // reminding to answer in JSON rather than narrate a digest.
   const user =
     `Topic: ${input.query}\n` +
     `Return up to ${max} items, preferring ones from roughly the last ${lookback} days.` +
-    steer;
+    steer +
+    `\n\nAfter searching, reply with the JSON array only — no prose, no code fences.`;
 
   const response = await createWithSearch(client, {
     model,
@@ -123,12 +145,13 @@ export async function runWebResearch(input: {
       { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
     ],
     messages: [{ role: "user", content: user }],
-    maxTokens: 3000,
+    maxTokens: 8000,
     allow: splitDomains(input.allowedDomains),
     block: splitDomains(input.blockedDomains),
     maxUses: maxSearches,
   });
 
+  const costCents = estimateCostCents(response, model);
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
@@ -138,10 +161,11 @@ export async function runWebResearch(input: {
   const raw = parseJsonArray(text);
   const allowed = new Set(input.moduleNames.map((m) => m.toLowerCase()));
   const items: WebItem[] = raw
-    .filter((x) => x && typeof x.url === "string" && typeof x.title === "string")
+    // A title is required; a per-source url is not (synthesised items are kept).
+    .filter((x) => x && typeof x.title === "string")
     .map((x) => ({
       title: String(x.title).slice(0, 300),
-      url: String(x.url),
+      url: typeof x.url === "string" ? String(x.url) : "",
       summary: typeof x.summary === "string" ? x.summary : "",
       modules: Array.isArray(x.modules)
         ? x.modules
@@ -154,7 +178,20 @@ export async function runWebResearch(input: {
     }))
     .slice(0, max);
 
-  return { items, costCents: estimateCostCents(response, model) };
+  // Diagnose an empty run so the cause is visible, not a silent "Nothing new".
+  let reason: string | undefined;
+  if (items.length === 0) {
+    if (response.stop_reason === "pause_turn") reason = "paused";
+    else if (!text) reason = "no_text";
+    else if (raw.length === 0)
+      reason = `parse_failed: ${text.slice(0, 300)}`;
+    else reason = "no_items";
+    console.warn(
+      `[research] empty run — stop=${response.stop_reason} reason=${reason}`,
+    );
+  }
+
+  return { items, costCents, reason };
 }
 
 // Dig deeper on a single topic: a focused web search returning richer prose
@@ -219,11 +256,16 @@ function estimateCostCents(response: Anthropic.Message, model: string): number {
 }
 
 function parseJsonArray(text: string): any[] {
+  // Strip ```json / ``` fences the model sometimes wraps the array in.
+  const cleaned = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
   try {
-    const direct = JSON.parse(text);
+    const direct = JSON.parse(cleaned);
     return Array.isArray(direct) ? direct : [];
   } catch {
-    const match = text.match(/\[[\s\S]*\]/);
+    const match = cleaned.match(/\[[\s\S]*\]/);
     if (match) {
       try {
         const arr = JSON.parse(match[0]);
