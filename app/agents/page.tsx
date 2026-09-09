@@ -146,14 +146,23 @@ export default async function AgentsPage() {
                     ? "Nothing new"
                     : `Found ${lr.foundCount}`;
               return (
-                <div key={a.id} className="card">
+                <div
+                  key={a.id}
+                  className="card group hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lift"
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <Link
                         href={`/agents/${a.id}`}
-                        className="text-sm font-semibold text-slate-900 hover:underline"
+                        className="inline-flex items-center gap-1 text-sm font-semibold text-ink transition duration-200 ease-apple hover:text-accent"
                       >
                         {a.name}
+                        <span
+                          aria-hidden
+                          className="text-slate-400 transition duration-200 ease-apple group-hover:translate-x-0.5 group-hover:text-accent"
+                        >
+                          ›
+                        </span>
                       </Link>
                       {a.mission && (
                         <p className="truncate text-xs text-slate-500">
@@ -192,6 +201,15 @@ export default async function AgentsPage() {
                     )}
                     <span className="ml-auto text-slate-400">{lastLabel}</span>
                   </div>
+                  {/* Named explicitly: the briefing and brief-upload live on the
+                      agent's own page, and that wasn't discoverable before. */}
+                  <Link
+                    href={`/agents/${a.id}`}
+                    className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs font-medium text-accent transition duration-200 ease-apple hover:gap-1"
+                  >
+                    <span>Open briefing, research briefs &amp; sources</span>
+                    <span aria-hidden>→</span>
+                  </Link>
                 </div>
               );
             })}
