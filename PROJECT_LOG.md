@@ -2,6 +2,28 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — Agents UX cleanup + cheap Test mode
+
+First real runs surfaced usability and cost issues; fixes agreed by Q&A.
+
+- **Cost reality corrected.** A test run cost ~8p — the user assumed the model
+  and wanted a cheaper/open-source one. Diagnosed: ~5p was **web-search fees**
+  (~1p/search × up to 5), model-independent, and the search tool is
+  Claude-only, so switching providers loses research entirely. Real levers:
+  fewer searches + Haiku for tokens. Haiku 4.5 is the cheapest sensible model.
+- **Test mode** (Haiku + 2 searches, ~2–3p/run) as a persisted toggle on
+  `/agents` (`Setting` `test_mode`). `resolveRunModel()` in `lib/anthropic.ts`
+  is the one place model + search-cap are decided; `web.ts` threads the model
+  through `createWithSearch`/`estimateCostCents`, and `summariseItem` honours it
+  too. Off = full Sonnet + 5 searches.
+- **"Research now" takes a PDF/Word file** as well as a typed topic (extracted
+  text becomes the query via `extractText` → `researchAdHoc`).
+- **Collapsed the two agent-page PDF inputs**: removed "append PDF to briefing"
+  (and the `appendBriefingFromFile` action); Briefing is text-only (the standing
+  focus), Research briefs is the single upload/paste for a specific document.
+- **Discoverability**: `/agents` "Finders" → "Your agents"; each card now has an
+  explicit **Configure** button (was an easy-to-miss text link).
+
 ## 2026-09 — Diagnostic audit & hardening
 
 A full review of everything built so far, then the fixes we agreed to take.

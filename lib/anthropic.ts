@@ -1,11 +1,36 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { prisma } from "@/lib/db";
 
-// Default summariser model — cheap and good for this bulk task. Override with
-// ANTHROPIC_MODEL in .env if you want (e.g. claude-opus-5 for sharper drafts).
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+// The full-quality model: whatever ANTHROPIC_MODEL is set to, else Sonnet 5.
+const FULL_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+// The cheap model used while tuning. Haiku 4.5 is the cheapest sensible Claude
+// model that still drives web search — half Sonnet's token price.
+const TEST_MODEL = "claude-haiku-4-5";
 
 export function hasApiKey(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
+}
+
+// Is the cheap "Test mode" switch on? Persisted as a Setting so the toggle on
+// the Agents page is authoritative across every run. Defaults to off.
+export async function isTestMode(): Promise<boolean> {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: "test_mode" } });
+    return row?.value === "on";
+  } catch {
+    return false;
+  }
+}
+
+// Resolve the model + web-search cap for one research run, honouring Test mode.
+// Test on → Haiku, 2 searches (~2–3p/run); off → the full model, 5 searches.
+export async function resolveRunModel(): Promise<{
+  model: string;
+  maxSearches: number;
+}> {
+  return (await isTestMode())
+    ? { model: TEST_MODEL, maxSearches: 2 }
+    : { model: FULL_MODEL, maxSearches: 5 };
 }
 
 export type Summary = {
@@ -26,6 +51,7 @@ export async function summariseItem(input: {
   if (!hasApiKey()) return null;
 
   const client = new Anthropic();
+  const { model } = await resolveRunModel();
   const moduleList = input.moduleNames.join(", ");
 
   const steer = input.instructions?.trim()
@@ -48,7 +74,7 @@ export async function summariseItem(input: {
     `Content:\n${input.content.slice(0, 8000)}`;
 
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 1024,
     output_config: { effort: "low" },
     system,

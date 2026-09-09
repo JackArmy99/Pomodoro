@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import {
   updateAgent,
-  appendBriefingFromFile,
   deleteAgent,
   addAgentSource,
   deleteAgentSource,
@@ -174,34 +173,16 @@ export default async function AgentDetailPage({
           placeholder="e.g. Track CCH Tagetik product releases and roadmap. Prioritise new modules, pricing and end-of-support notices. Ignore marketing and events."
           className="field"
         />
+        <p className="text-xs text-slate-400">
+          To research a specific document, add it under{" "}
+          <strong className="font-medium text-slate-500">Research briefs</strong>{" "}
+          below.
+        </p>
         <div className="flex justify-end">
           <button type="submit" className="btn">
             Save briefing
           </button>
         </div>
-      </form>
-
-      {/* Upload a brief into the briefing */}
-      <form
-        action={appendBriefingFromFile}
-        className="card flex flex-wrap items-end gap-2"
-      >
-        <input type="hidden" name="id" value={agent.id} />
-        <div className="flex-1">
-          <label className="label" htmlFor="brief-file">
-            Append a PDF / Word brief to the briefing
-          </label>
-          <input
-            id="brief-file"
-            name="file"
-            type="file"
-            accept=".pdf,.docx,.txt"
-            className="field"
-          />
-        </div>
-        <button type="submit" className="btn-ghost">
-          Append
-        </button>
       </form>
 
       {/* Research briefs — kept as their own topics, researched every run */}

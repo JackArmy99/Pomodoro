@@ -22,6 +22,11 @@ no real client names/PII in the app.
 - **Tailwind CSS**.
 - **Anthropic SDK** (`claude-sonnet-5` default) for summarising/scoring +
   **web_search** server tool for research. Key in `.env` as `ANTHROPIC_API_KEY`.
+  **Cost model**: the dominant per-run cost is web-search fees (~1p/search, not
+  the model). **Test mode** (toggle on `/agents`, persisted as Setting
+  `test_mode`) runs on Haiku 4.5 + caps searches to 2 (~2–3p/run) for cheap
+  tuning; off = full Sonnet + 5 searches. `resolveRunModel()` in
+  `lib/anthropic.ts` is the single source both `web.ts` and `summariseItem` use.
 - Server logic = server actions in `app/actions/*` + `lib/*`. No separate API.
 
 ## Run / update

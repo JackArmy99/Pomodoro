@@ -1,7 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { hasApiKey } from "@/lib/anthropic";
-
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+import { hasApiKey, resolveRunModel } from "@/lib/anthropic";
 
 export type WebItem = {
   title: string;
@@ -28,6 +26,7 @@ let workingToolType: string | null = null;
 async function createWithSearch(
   client: Anthropic,
   params: {
+    model: string;
     system?: Anthropic.MessageCreateParams["system"];
     messages: Anthropic.MessageParam[];
     maxTokens: number;
@@ -50,7 +49,7 @@ async function createWithSearch(
 
     try {
       const response = await client.messages.create({
-        model: MODEL,
+        model: params.model,
         max_tokens: params.maxTokens,
         ...(params.system ? { system: params.system } : {}),
         tools: [tool] as unknown as Anthropic.Tool[],
@@ -91,7 +90,10 @@ export async function runWebResearch(input: {
   if (!hasApiKey()) return { items: [], costCents: 0 };
 
   const client = new Anthropic();
-  const max = input.maxItems ?? 6;
+  const { model, maxSearches } = await resolveRunModel();
+  // In test mode the search cap also caps how many items we ask for, so a cheap
+  // run stays cheap end to end.
+  const max = Math.min(input.maxItems ?? 6, maxSearches * 3);
   const lookback = input.lookbackDays ?? 30;
   const steer = input.instructions?.trim()
     ? `\n\nStanding instructions from the firm (follow closely):\n${input.instructions.trim()}`
@@ -116,6 +118,7 @@ export async function runWebResearch(input: {
     steer;
 
   const response = await createWithSearch(client, {
+    model,
     system: [
       { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
     ],
@@ -123,7 +126,7 @@ export async function runWebResearch(input: {
     maxTokens: 3000,
     allow: splitDomains(input.allowedDomains),
     block: splitDomains(input.blockedDomains),
-    maxUses: 5,
+    maxUses: maxSearches,
   });
 
   const text = response.content
@@ -151,7 +154,7 @@ export async function runWebResearch(input: {
     }))
     .slice(0, max);
 
-  return { items, costCents: estimateCostCents(response) };
+  return { items, costCents: estimateCostCents(response, model) };
 }
 
 // Dig deeper on a single topic: a focused web search returning richer prose
@@ -164,6 +167,7 @@ export async function webDeepDive(input: {
   if (!hasApiKey()) return { text: "", costCents: 0 };
 
   const client = new Anthropic();
+  const { model, maxSearches } = await resolveRunModel();
   const steer = input.instructions?.trim()
     ? `\n\nFirm context:\n${input.instructions.trim()}`
     : "";
@@ -178,10 +182,11 @@ export async function webDeepDive(input: {
     `Focus: ${input.note?.trim() || "general deeper detail and recent developments"}`;
 
   const response = await createWithSearch(client, {
+    model,
     system,
     messages: [{ role: "user", content: user }],
     maxTokens: 1500,
-    maxUses: 4,
+    maxUses: Math.min(4, maxSearches),
   });
 
   const text = response.content
@@ -190,7 +195,7 @@ export async function webDeepDive(input: {
     .join("")
     .trim();
 
-  return { text, costCents: estimateCostCents(response) };
+  return { text, costCents: estimateCostCents(response, model) };
 }
 
 function normaliseRelevance(v: unknown): "high" | "medium" | "low" {
@@ -201,11 +206,11 @@ function normaliseRelevance(v: unknown): "high" | "medium" | "low" {
 }
 
 // Rough spend estimate: per-model token rates + ~1c per web search.
-function estimateCostCents(response: Anthropic.Message): number {
+function estimateCostCents(response: Anthropic.Message, model: string): number {
   const u = response.usage;
   const inTok = u?.input_tokens ?? 0;
   const outTok = u?.output_tokens ?? 0;
-  const { inRate, outRate } = ratesFor(MODEL);
+  const { inRate, outRate } = ratesFor(model);
   const dollars = (inTok * inRate + outTok * outRate) / 1_000_000;
   const searches = response.content.filter(
     (b) => b.type === "web_search_tool_result",

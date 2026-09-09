@@ -55,28 +55,6 @@ export async function updateAgent(formData: FormData) {
   revalidatePath("/agents");
 }
 
-// Upload a PDF/Word brief and append its text into the agent's briefing.
-export async function appendBriefingFromFile(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  const file = formData.get("file");
-  if (!id || !(file instanceof File) || file.size === 0) return;
-
-  let text = "";
-  try {
-    text = await extractText(file);
-  } catch {
-    return;
-  }
-  if (!text) return;
-
-  const agent = await prisma.agent.findUnique({ where: { id } });
-  if (!agent) return;
-  const briefing = [agent.briefing, text].filter((s) => s && s.trim()).join("\n\n");
-
-  await prisma.agent.update({ where: { id }, data: { briefing } });
-  revalidatePath(`/agents/${id}`);
-}
-
 export async function deleteAgent(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
@@ -251,11 +229,34 @@ export async function runAgentBrief(formData: FormData) {
   revalidatePath("/research");
 }
 
-// One-off ad-hoc research from the overview box.
+// One-off ad-hoc research from the overview box: a typed topic, or a
+// PDF/Word/txt file whose extracted text becomes the topic.
 export async function researchNow(formData: FormData) {
-  const query = String(formData.get("query") ?? "").trim();
+  let query = String(formData.get("query") ?? "").trim();
+
+  const file = formData.get("file");
+  if (file instanceof File && file.size > 0) {
+    try {
+      const text = await extractText(file);
+      if (text) query = text.slice(0, 1500);
+    } catch {
+      return;
+    }
+  }
+
   if (!query) return;
   await researchAdHoc(query);
   revalidatePath("/agents");
   revalidatePath("/research");
+}
+
+// Flip the cheap "Test mode" switch (Haiku + fewer searches) on or off.
+export async function setTestMode(formData: FormData) {
+  const on = String(formData.get("on") ?? "") === "true";
+  await prisma.setting.upsert({
+    where: { key: "test_mode" },
+    create: { key: "test_mode", value: on ? "on" : "off" },
+    update: { value: on ? "on" : "off" },
+  });
+  revalidatePath("/agents");
 }

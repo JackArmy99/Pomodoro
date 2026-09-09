@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { hasApiKey } from "@/lib/anthropic";
+import { hasApiKey, isTestMode } from "@/lib/anthropic";
 import {
   createAgent,
   runAgent,
   runAllAgents,
   researchNow,
+  setTestMode,
 } from "@/app/actions/agents";
 import SubmitButton from "@/components/SubmitButton";
 import { RELEVANCE_STYLES } from "@/lib/format";
@@ -17,7 +18,7 @@ function costLabel(cents: number): string {
 }
 
 export default async function AgentsPage() {
-  const [agents, pending, runs, costAgg] = await Promise.all([
+  const [agents, pending, runs, costAgg, testMode] = await Promise.all([
     prisma.agent.findMany({
       where: { archetype: "finder" },
       orderBy: { createdAt: "asc" },
@@ -36,6 +37,7 @@ export default async function AgentsPage() {
     }),
     prisma.agentRun.findMany({ orderBy: { ranAt: "desc" } }),
     prisma.agentRun.aggregate({ _sum: { estCostCents: true } }),
+    isTestMode(),
   ]);
 
   const lastRun = new Map<string, (typeof runs)[number]>();
@@ -54,13 +56,16 @@ export default async function AgentsPage() {
             in the inbox, scored by relevance.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <TestModeToggle on={testMode} />
+            <form action={runAllAgents}>
+              <SubmitButton pendingLabel="Researching…">Run all</SubmitButton>
+            </form>
+          </div>
           <span className="text-xs text-slate-400">
-            Research spend so far: {costLabel(totalCost)}
+            Spent on research so far: {costLabel(totalCost)}
           </span>
-          <form action={runAllAgents}>
-            <SubmitButton pendingLabel="Researching…">Run all</SubmitButton>
-          </form>
         </div>
       </header>
 
@@ -105,27 +110,38 @@ export default async function AgentsPage() {
       <section className="card space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">Research now</h2>
         <p className="text-xs text-slate-500">
-          A one-off search — no saved agent. Results go to the inbox.
+          A one-off search — no saved agent. Type a topic or drop in a
+          PDF/Word file; results go to the inbox.
         </p>
-        <form action={researchNow} className="flex items-end gap-2">
-          <input
-            name="query"
-            placeholder="e.g. Latest OneStream acquisition news"
-            className="field"
-            required
-          />
-          <SubmitButton
-            className="btn-ghost whitespace-nowrap"
-            pendingLabel="Researching…"
-          >
-            Research
-          </SubmitButton>
+        <form action={researchNow} className="space-y-2">
+          <div className="flex items-end gap-2">
+            <input
+              name="query"
+              placeholder="e.g. Latest OneStream acquisition news"
+              className="field"
+            />
+            <SubmitButton
+              className="btn-ghost whitespace-nowrap"
+              pendingLabel="Researching…"
+            >
+              Research
+            </SubmitButton>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <span className="whitespace-nowrap">or research a file:</span>
+            <input
+              name="file"
+              type="file"
+              accept=".pdf,.docx,.txt"
+              className="field py-1.5 text-xs"
+            />
+          </div>
         </form>
       </section>
 
-      {/* Finder agents */}
+      {/* Agents */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-700">Finders</h2>
+        <h2 className="text-sm font-semibold text-slate-700">Your agents</h2>
         {agents.length === 0 ? (
           <p className="card text-sm text-slate-500">
             No agents yet. Create one below.
@@ -201,15 +217,22 @@ export default async function AgentsPage() {
                     )}
                     <span className="ml-auto text-slate-400">{lastLabel}</span>
                   </div>
-                  {/* Named explicitly: the briefing and brief-upload live on the
-                      agent's own page, and that wasn't discoverable before. */}
-                  <Link
-                    href={`/agents/${a.id}`}
-                    className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-xs font-medium text-accent transition duration-200 ease-apple hover:gap-1"
-                  >
-                    <span>Open briefing, research briefs &amp; sources</span>
-                    <span aria-hidden>→</span>
-                  </Link>
+                  {/* Explicit Configure action: the briefing, research briefs
+                      and guardrails all live on the agent's own page. */}
+                  <div className="mt-3 border-t border-slate-100 pt-3">
+                    <Link
+                      href={`/agents/${a.id}`}
+                      className="btn-ghost w-full justify-center"
+                    >
+                      Configure
+                      <span aria-hidden className="ml-1">
+                        →
+                      </span>
+                    </Link>
+                    <p className="mt-1.5 text-center text-[11px] text-slate-400">
+                      Briefing, research briefs &amp; guardrails
+                    </p>
+                  </div>
                 </div>
               );
             })}
@@ -248,8 +271,43 @@ export default async function AgentsPage() {
           <button type="submit" className="btn-ghost">
             Create
           </button>
+          <p className="w-full text-xs text-slate-400">
+            Create an agent, then open <strong className="font-medium text-slate-500">Configure</strong>{" "}
+            to set its briefing, guardrails and research briefs.
+          </p>
         </form>
       </section>
     </div>
+  );
+}
+
+// A persisted on/off switch for cheap "Test mode" (Haiku + fewer searches).
+// Server component: the button posts the opposite of the current state.
+function TestModeToggle({ on }: { on: boolean }) {
+  return (
+    <form action={setTestMode} className="flex items-center">
+      <input type="hidden" name="on" value={on ? "false" : "true"} />
+      <button
+        type="submit"
+        title={
+          on
+            ? "Test mode ON — Haiku, ~2 searches (~2–3p/run). Click for full Sonnet runs."
+            : "Full mode — Sonnet, up to 5 searches. Click for cheap Haiku test runs."
+        }
+        className={`chip transition duration-200 ease-apple ${
+          on
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+            : "border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+        }`}
+      >
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 rounded-full ${
+            on ? "bg-emerald-500" : "bg-slate-300"
+          }`}
+        />
+        {on ? "Test mode: on" : "Test mode: off"}
+      </button>
+    </form>
   );
 }
