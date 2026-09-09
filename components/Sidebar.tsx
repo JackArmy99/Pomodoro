@@ -23,9 +23,9 @@ export default async function Sidebar() {
   const prospects = clients.filter((c) => c.type === "prospect");
 
   return (
-    <aside className="flex h-full w-full flex-col gap-6 border-r border-slate-200 bg-white p-4">
+    <aside className="glass flex h-full w-full flex-col gap-6 border-r p-4">
       <Link href="/" className="flex items-center gap-2">
-        <span className="grid h-7 w-7 place-items-center rounded-md bg-indigo-600 text-sm font-bold text-white">
+        <span className="grid h-7 w-7 place-items-center rounded-xl bg-accent text-sm font-bold text-white shadow-soft">
           B
         </span>
         <span className="text-sm font-semibold tracking-tight">
@@ -39,7 +39,7 @@ export default async function Sidebar() {
           <Link
             key={l.href}
             href={l.href}
-            className="flex items-center justify-between rounded-md px-3 py-2 text-slate-700 transition hover:bg-slate-100"
+            className="flex items-center justify-between rounded-lg px-3 py-2 text-slate-700 transition duration-200 ease-apple hover:bg-slate-200/60 hover:text-ink"
           >
             <span>{l.label}</span>
             {l.hint && (
@@ -58,7 +58,7 @@ export default async function Sidebar() {
         )}
         <Link
           href="/clients"
-          className="mt-2 block rounded-md px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+          className="mt-2 block rounded-lg px-3 py-1.5 text-xs font-medium text-accent transition duration-200 ease-apple hover:bg-accent/10"
         >
           + Add client
         </Link>
@@ -87,7 +87,7 @@ function ClientGroup({
             <li key={c.id}>
               <Link
                 href={`/clients/${c.id}`}
-                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-100"
+                className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-slate-700 transition duration-200 ease-apple hover:bg-slate-200/60 hover:text-ink"
               >
                 <span
                   className="h-2.5 w-2.5 shrink-0 rounded-full"

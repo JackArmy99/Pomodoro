@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,34 +8,78 @@
   color-scheme: light;
 }
 
-body {
-  @apply bg-paper text-ink;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-paper font-sans text-ink;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.021em;
+  }
+  /* Visible, accessible keyboard focus everywhere. */
+  :focus-visible {
+    outline: 2px solid rgb(79 70 229 / 0.7);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
 }
 
-/* Consistent form controls without repeating classes everywhere. */
+/* Consistent, Apple-inspired components. */
 @layer components {
   .field {
-    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm
-      outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200;
+    @apply w-full rounded-xl border border-slate-300/80 bg-white px-3.5 py-2.5
+      text-sm text-ink shadow-sm outline-none transition duration-200 ease-apple
+      placeholder:text-slate-400 focus:border-accent
+      focus:ring-4 focus:ring-accent/15;
   }
   .label {
-    @apply mb-1 block text-xs font-medium text-slate-600;
+    @apply mb-1 block text-xs font-medium text-slate-500;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-1 rounded-md bg-indigo-600
-      px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-700
-      focus:outline-none focus:ring-2 focus:ring-indigo-300;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent
+      px-4 py-2.5 text-sm font-medium text-white shadow-soft transition
+      duration-200 ease-apple hover:-translate-y-0.5 hover:bg-accent-hover
+      hover:shadow-lift active:translate-y-0 active:scale-[0.98]
+      disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1 rounded-md border
-      border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700
-      transition hover:bg-slate-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-xl border
+      border-slate-300/80 bg-white/90 px-3.5 py-2 text-sm font-medium
+      text-slate-700 shadow-sm transition duration-200 ease-apple
+      hover:-translate-y-0.5 hover:bg-white hover:shadow-soft
+      active:translate-y-0 active:scale-[0.98];
   }
   .card {
-    @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm;
+    @apply rounded-2xl border border-slate-200/70 bg-white p-4 shadow-soft
+      transition duration-200 ease-apple;
+  }
+  /* Only clickable cards lift on hover. */
+  a.card:hover {
+    @apply -translate-y-0.5 border-slate-300 shadow-lift;
   }
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5
       text-xs font-medium;
+  }
+  /* Frosted-glass surface for the sidebar / headers. */
+  .glass {
+    @apply border-slate-200/70 bg-white/70 backdrop-blur-xl backdrop-saturate-150;
+  }
+}
+
+/* Respect users who prefer less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    transform: none !important;
   }
 }
