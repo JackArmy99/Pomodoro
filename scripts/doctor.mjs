@@ -18,15 +18,28 @@ function loadEnv() {
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
     let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
+
+    // Handle KEY="value"  # trailing comment  — take what's inside the quotes
+    // and discard the rest, matching how Next.js reads .env.
+    const quoted = value.match(/^(['"])(.*?)\1/);
+    if (quoted) {
+      value = quoted[2];
+    } else {
+      value = value.split(/\s+#/)[0].trim(); // unquoted: strip " # comment"
     }
     if (!process.env[key]) process.env[key] = value;
   }
   return true;
+}
+
+// The commonest mistake: the key is in .env but still behind the `#` that
+// shipped in the template, so nothing reads it.
+function isCommentedOut(name) {
+  const envPath = join(root, ".env");
+  if (!existsSync(envPath)) return false;
+  return readFileSync(envPath, "utf8")
+    .split(/\r?\n/)
+    .some((l) => new RegExp(`^\\s*#\\s*${name}\\s*=\\s*\\S`).test(l));
 }
 
 const ok = (m) => console.log(`✅ ${m}`);
@@ -56,8 +69,14 @@ async function main() {
 
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
-    bad("ANTHROPIC_API_KEY is not set in .env");
-    info('Add a line:  ANTHROPIC_API_KEY=sk-ant-...   then re-run this.');
+    if (isCommentedOut("ANTHROPIC_API_KEY")) {
+      bad("ANTHROPIC_API_KEY is in .env but the line is COMMENTED OUT.");
+      info("Delete the leading `# ` so the line starts with ANTHROPIC_API_KEY=");
+      info('It should read:  ANTHROPIC_API_KEY="sk-ant-..."');
+    } else {
+      bad("ANTHROPIC_API_KEY is not set in .env");
+      info('Add a line:  ANTHROPIC_API_KEY="sk-ant-..."   then re-run this.');
+    }
     process.exit(1);
   }
   ok(`ANTHROPIC_API_KEY found (${key.slice(0, 8)}…${key.slice(-4)})`);
