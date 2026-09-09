@@ -21,6 +21,61 @@ function splitDomains(csv?: string | null): string[] {
     .filter(Boolean);
 }
 
+// Prefer the current web-search tool; fall back if the account/model rejects it.
+const SEARCH_TOOL_TYPES = ["web_search_20260209", "web_search_20250305"];
+let workingToolType: string | null = null;
+
+async function createWithSearch(
+  client: Anthropic,
+  params: {
+    system?: Anthropic.MessageCreateParams["system"];
+    messages: Anthropic.MessageParam[];
+    maxTokens: number;
+    allow?: string[];
+    block?: string[];
+    maxUses?: number;
+  },
+): Promise<Anthropic.Message> {
+  const types = workingToolType ? [workingToolType] : SEARCH_TOOL_TYPES;
+  let lastErr: unknown;
+
+  for (const type of types) {
+    const tool: Record<string, unknown> = {
+      type,
+      name: "web_search",
+      max_uses: params.maxUses ?? 5,
+    };
+    if (params.allow?.length) tool.allowed_domains = params.allow;
+    else if (params.block?.length) tool.blocked_domains = params.block;
+
+    try {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: params.maxTokens,
+        ...(params.system ? { system: params.system } : {}),
+        tools: [tool] as unknown as Anthropic.Tool[],
+        messages: params.messages,
+      });
+      workingToolType = type; // remember what works
+      return response;
+    } catch (err) {
+      lastErr = err;
+      // Only try the older tool type if this one was rejected as invalid.
+      if ((err as { status?: number })?.status !== 400) throw err;
+    }
+  }
+  throw lastErr;
+}
+
+// Per-model token rates ($ per 1M) so the cost estimate stays honest.
+function ratesFor(model: string): { inRate: number; outRate: number } {
+  if (model.includes("opus")) return { inRate: 5, outRate: 25 };
+  if (model.includes("haiku")) return { inRate: 1, outRate: 5 };
+  if (model.includes("fable") || model.includes("mythos"))
+    return { inRate: 10, outRate: 50 };
+  return { inRate: 2, outRate: 10 }; // sonnet
+}
+
 // A web-research agent: uses Claude's built-in web search to gather recent
 // items about a topic, each scored for relevance. Returns [] when there's no
 // API key. Web search is a billed server tool (a few pennies per run).
@@ -60,25 +115,15 @@ export async function runWebResearch(input: {
     `Return up to ${max} items, preferring ones from roughly the last ${lookback} days.` +
     steer;
 
-  // Built-in web search server tool (runs on Anthropic's side).
-  const searchTool: Record<string, unknown> = {
-    type: "web_search_20260209",
-    name: "web_search",
-    max_uses: 5,
-  };
-  const allow = splitDomains(input.allowedDomains);
-  const block = splitDomains(input.blockedDomains);
-  if (allow.length) searchTool.allowed_domains = allow;
-  else if (block.length) searchTool.blocked_domains = block;
-
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 3000,
+  const response = await createWithSearch(client, {
     system: [
       { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
     ],
-    tools: [searchTool] as unknown as Anthropic.Tool[],
     messages: [{ role: "user", content: user }],
+    maxTokens: 3000,
+    allow: splitDomains(input.allowedDomains),
+    block: splitDomains(input.blockedDomains),
+    maxUses: 5,
   });
 
   const text = response.content
@@ -132,14 +177,11 @@ export async function webDeepDive(input: {
     `Topic: ${input.topic}\n` +
     `Focus: ${input.note?.trim() || "general deeper detail and recent developments"}`;
 
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 1500,
+  const response = await createWithSearch(client, {
     system,
-    tools: [
-      { type: "web_search_20260209", name: "web_search", max_uses: 4 },
-    ] as unknown as Anthropic.Tool[],
     messages: [{ role: "user", content: user }],
+    maxTokens: 1500,
+    maxUses: 4,
   });
 
   const text = response.content
@@ -158,12 +200,13 @@ function normaliseRelevance(v: unknown): "high" | "medium" | "low" {
   return "medium";
 }
 
-// Rough spend estimate: Sonnet token rates ($2/$10 per 1M) + ~1c per web search.
+// Rough spend estimate: per-model token rates + ~1c per web search.
 function estimateCostCents(response: Anthropic.Message): number {
   const u = response.usage;
   const inTok = u?.input_tokens ?? 0;
   const outTok = u?.output_tokens ?? 0;
-  const dollars = (inTok * 2 + outTok * 10) / 1_000_000;
+  const { inRate, outRate } = ratesFor(MODEL);
+  const dollars = (inTok * inRate + outTok * outRate) / 1_000_000;
   const searches = response.content.filter(
     (b) => b.type === "web_search_tool_result",
   ).length;

@@ -40,8 +40,19 @@ migration, and the seed script (3 sample clients, briefs and opportunities).
 | `npm run update` | Pull the latest code + apply DB changes **without losing data** (backs up first) |
 | `npm run backup` | Save a timestamped copy of your database to `prisma/backups/` |
 | `npm run db:studio` | Open Prisma Studio to browse/edit the database |
-| `npm run db:seed` | Re-load the sample data |
-| `npm run db:reset` | **Wipes** and rebuilds the database with sample data — only for a clean start |
+| `npm run doctor` | Check the AI setup end to end (key, model, web search) when agents aren't researching |
+| `npm run db:reseed` | **Wipes** and re-loads the starter data — asks you to type `RESEED` and backs up first |
+| `npm run db:reset` | **Wipes** and rebuilds the database from scratch — only for a clean start |
+
+> `db:reseed` and `db:reset` both delete everything you've entered. Neither is
+> needed in normal use — reach for `npm run update` instead.
+
+### When the agents aren't finding anything
+
+Run `npm run doctor`. It checks your `.env`, makes a real call to Claude, and
+tries a live web search, telling you exactly which step fails (missing key, no
+API credit, web search not enabled) instead of the app quietly saying
+"Nothing new".
 
 ### Updating safely
 

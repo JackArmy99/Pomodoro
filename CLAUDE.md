@@ -32,7 +32,9 @@ npm run setup     # first time: generate + migrate + seed
 npm run dev       # http://localhost:3000
 npm run update    # pull latest + install + migrate (keeps data); then npm run dev
 npm run backup    # timestamped copy of prisma/dev.db
+npm run doctor    # diagnose the AI path: key → Claude call → live web search
 ```
+Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 `.env` is git-ignored and auto-created from `.env.example` (predev/presetup).
 
 ## Data model (prisma/schema.prisma)
@@ -49,7 +51,8 @@ npm run backup    # timestamped copy of prisma/dev.db
 - **Finding** (research inbox item: relevance high/medium/low, agentId,
   sourceType, status pending/approved/dismissed) ↔ **FindingModule**.
 - **Source** (rss feed | web topic, optionally pinned to an agent),
-  **ResearchBrief**, **Setting** (key/value).
+  **ResearchBrief** (a PDF/Word/typed brief attached to an agent — researched
+  as its own topic on every run, or on demand), **Setting** (key/value).
 
 ## Screens (app/)
 
@@ -64,10 +67,15 @@ npm run backup    # timestamped copy of prisma/dev.db
 ## Research engine (lib/research/)
 
 - `web.ts` `runWebResearch` — Claude web_search → scored JSON findings; stable
-  system prefix is prompt-cached; `webDeepDive` for enrich-in-place.
-- `fetch.ts` — `runFinderAgent` (briefing-driven run + pinned sources + a
-  **triage feedback** block from approved/dismissed findings), `createWebFindings`,
-  `processFinding`, `researchFromBrief`, `researchAdHoc`, `deepenFinding`.
+  system prefix is prompt-cached; the search tool type falls back
+  (`web_search_20260209` → `web_search_20250305`) if the account rejects the
+  newer one; `webDeepDive` for enrich-in-place.
+- `fetch.ts` — `runFinderAgent` (**the briefing IS the search topic**, plus
+  pinned sources, attached research briefs, and a **triage feedback** block from
+  approved/dismissed findings), `createWebFindings`, `processFinding`,
+  `researchFromBrief`, `researchAdHoc`, `deepenFinding`.
+- Steering lives only on `Agent.briefing` (the old global `research_instructions`
+  Setting was retired — it was being injected twice).
 - `youtube.ts` (captions), `extract.ts` (PDF/Word text).
 - `lib/anthropic.ts` `summariseItem` (summary + modules + relevance).
 
@@ -87,12 +95,18 @@ Task/Brief each)**.
 - Done: hub/tasks, clients+modules mapping, briefs→affected-clients→opportunity,
   research inbox, **Finder agents** (overview, briefing, relevance, run history,
   cost, ad-hoc, fan-out approve), triage-learning loop, prompt caching.
+- Hardening round (diagnostic audit): `npm run doctor`, briefing-as-topic fix,
+  per-agent research briefs resurfaced, guarded re-seed, pending states on every
+  slow button, failed runs always recorded.
 - Next: test & tune the Finder live; then **Retriever** (point at video/manual)
   and **Comparer** (version-diff manuals); later ASR for caption-less video,
   guardrailed portal login, hosting (Azure) + scheduling + team sharing.
 
 ## Testing the Finder (quick loop)
 
+0. `npm run doctor` — must pass before anything else. A silent "Nothing new"
+   is almost always a missing/invalid `ANTHROPIC_API_KEY` or no API credit
+   (billed separately from a Claude Max subscription).
 1. `/agents` → open "General Research" → give it a focused briefing.
 2. **Run now** → check `/research`: relevance + module tags sensible?
 3. Approve the good ones, dismiss the noise → **Run again**: it now gets a

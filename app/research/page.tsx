@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { hasApiKey } from "@/lib/anthropic";
 import { ingestPaste, ingestVideo, dismissFinding } from "@/app/actions/research";
+import SubmitButton from "@/components/SubmitButton";
 import {
   formatDate,
   RELEVANCE_STYLES,
@@ -163,9 +164,7 @@ export default async function ResearchInboxPage({
           />
           <input name="sourceUrl" type="url" placeholder="Source URL (optional)" className="field" />
           <div className="flex justify-end">
-            <button type="submit" className="btn">
-              Add
-            </button>
+            <SubmitButton pendingLabel="Summarising…">Add</SubmitButton>
           </div>
         </form>
 
@@ -182,9 +181,9 @@ export default async function ResearchInboxPage({
             required
           />
           <div className="flex justify-end">
-            <button type="submit" className="btn">
+            <SubmitButton pendingLabel="Fetching transcript…">
               Add video
-            </button>
+            </SubmitButton>
           </div>
         </form>
       </section>

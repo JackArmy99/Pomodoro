@@ -2,6 +2,39 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — Diagnostic audit & hardening
+
+A full review of everything built so far, then the fixes we agreed to take.
+
+- **The AI path had never actually run.** Everything downstream was untested
+  guesswork, so proving it comes first: **`npm run doctor`** checks `.env`, makes
+  a real Claude call, and tries a live web search, naming the failing step
+  (missing key / no API credit / web search unavailable). API credit is billed
+  separately from a Claude Max subscription — that caught us out.
+- **The briefing wasn't being searched.** `runFinderAgent` searched the agent's
+  *name* and passed the briefing only as side instructions, so a rich briefing
+  produced generic results. The briefing (falling back to mission, then name) is
+  now the search topic itself.
+- **Steering was injected twice** (global `research_instructions` Setting *and*
+  the agent briefing). The global Setting is retired; `Agent.briefing` is the one
+  source of steering.
+- **Search tool fallback**: `web_search_20260209` → `web_search_20250305` on a
+  400, cached after the first success, so an older account doesn't hard-fail.
+- **Cost estimate was Sonnet-only** — now per-model rates.
+- **`ResearchBrief` was orphaned** (model + engine existed, no UI). Resurfaced
+  *per agent*: upload a PDF/Word brief or paste one, it stays its own topic,
+  researched on every run and runnable on its own. Distinct from the briefing,
+  which is the agent's standing character.
+- **`db:seed` was a footgun** — one word, wipes everything. Renamed
+  **`db:reseed`**: auto-proceeds on an empty database, otherwise shows what
+  would be lost, requires typing `RESEED`, and takes a backup first.
+- **Silent slow buttons**: every AI-bound action (Run, Run all, Research,
+  Summarise, Dig deeper, Add video) now uses a `SubmitButton` with
+  `useFormStatus` — disabled, spinner, "Researching…" — so a 20-second run
+  doesn't look broken or invite double-clicks.
+- **`runAllAgents` swallowed errors**: failures now record an `AgentRun` with the
+  reason, same as a single run.
+
 ## 2026-09 — Finder v2: efficiency, learning, continuity
 
 - **Continuity via `CLAUDE.md` + `PROJECT_LOG.md`** (not claude.ai "Projects",

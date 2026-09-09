@@ -8,6 +8,7 @@ import {
   finalizeApprove,
   summariseFinding,
 } from "@/app/actions/research";
+import SubmitButton from "@/components/SubmitButton";
 import {
   formatDate,
   RELEVANCE_STYLES,
@@ -65,9 +66,9 @@ export default async function FindingDetailPage({
           {!finding.aiProcessed && (
             <form action={summariseFinding}>
               <input type="hidden" name="id" value={finding.id} />
-              <button type="submit" className="btn-ghost py-1">
+              <SubmitButton className="btn-ghost py-1" pendingLabel="Summarising…">
                 Summarise
-              </button>
+              </SubmitButton>
             </form>
           )}
           <form action={dismissFinding}>
@@ -185,9 +186,12 @@ export default async function FindingDetailPage({
             placeholder="e.g. focus on pricing and rollout dates"
             className="field"
           />
-          <button type="submit" className="btn-ghost whitespace-nowrap">
+          <SubmitButton
+            className="btn-ghost whitespace-nowrap"
+            pendingLabel="Digging…"
+          >
             Dig deeper
-          </button>
+          </SubmitButton>
         </div>
       </form>
 

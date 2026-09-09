@@ -7,6 +7,7 @@ import {
   runAllAgents,
   researchNow,
 } from "@/app/actions/agents";
+import SubmitButton from "@/components/SubmitButton";
 import { RELEVANCE_STYLES } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -58,9 +59,7 @@ export default async function AgentsPage() {
             Research spend so far: {costLabel(totalCost)}
           </span>
           <form action={runAllAgents}>
-            <button type="submit" className="btn">
-              Run all
-            </button>
+            <SubmitButton pendingLabel="Researching…">Run all</SubmitButton>
           </form>
         </div>
       </header>
@@ -115,9 +114,12 @@ export default async function AgentsPage() {
             className="field"
             required
           />
-          <button type="submit" className="btn-ghost whitespace-nowrap">
+          <SubmitButton
+            className="btn-ghost whitespace-nowrap"
+            pendingLabel="Researching…"
+          >
             Research
-          </button>
+          </SubmitButton>
         </form>
       </section>
 
@@ -161,9 +163,12 @@ export default async function AgentsPage() {
                     </div>
                     <form action={runAgent}>
                       <input type="hidden" name="id" value={a.id} />
-                      <button type="submit" className="btn py-1">
+                      <SubmitButton
+                        className="btn py-1"
+                        pendingLabel="Researching…"
+                      >
                         Run
-                      </button>
+                      </SubmitButton>
                     </form>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">

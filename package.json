@@ -8,13 +8,16 @@
     "build": "next build",
     "start": "next start",
     "presetup": "node scripts/ensure-env.mjs",
-    "setup": "prisma generate && prisma migrate dev && prisma db seed",
+    "setup": "prisma generate && prisma migrate dev && node scripts/reseed.mjs",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed",
+    "predb:reseed": "node scripts/ensure-env.mjs",
+    "db:reseed": "node scripts/reseed.mjs",
     "clients:add": "node scripts/add-clients.mjs",
     "db:reset": "prisma migrate reset",
     "db:studio": "prisma studio",
     "backup": "node scripts/backup.mjs",
+    "predoctor": "node scripts/ensure-env.mjs",
+    "doctor": "node scripts/doctor.mjs",
     "update": "node scripts/update.mjs"
   },
   "prisma": {

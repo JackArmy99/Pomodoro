@@ -7,8 +7,12 @@ import {
   deleteAgent,
   addAgentSource,
   deleteAgentSource,
+  addAgentBrief,
+  deleteAgentBrief,
+  runAgentBrief,
   runAgent,
 } from "@/app/actions/agents";
+import SubmitButton from "@/components/SubmitButton";
 import { formatDate, RELEVANCE_STYLES, RELEVANCE_LABELS } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +30,7 @@ export default async function AgentDetailPage({
     where: { id: params.id },
     include: {
       sources: { orderBy: { createdAt: "asc" } },
+      briefs: { orderBy: { createdAt: "asc" } },
       runs: { orderBy: { ranAt: "desc" }, take: 8 },
       findings: {
         where: { status: "pending" },
@@ -45,9 +50,7 @@ export default async function AgentDetailPage({
         <div className="flex items-center gap-2">
           <form action={runAgent}>
             <input type="hidden" name="id" value={agent.id} />
-            <button type="submit" className="btn">
-              Run now
-            </button>
+            <SubmitButton pendingLabel="Researching…">Run now</SubmitButton>
           </form>
           <form action={deleteAgent}>
             <input type="hidden" name="id" value={agent.id} />
@@ -200,6 +203,107 @@ export default async function AgentDetailPage({
           Append
         </button>
       </form>
+
+      {/* Research briefs — kept as their own topics, researched every run */}
+      <section className="card space-y-3">
+        <h2 className="text-sm font-semibold text-slate-900">
+          Research briefs{" "}
+          <span className="font-normal text-slate-400">
+            ({agent.briefs.length})
+          </span>
+        </h2>
+        <p className="text-xs text-slate-500">
+          Drop in a PDF/Word brief or paste one. Unlike the briefing above, each
+          brief stays a separate topic — researched on every run, and runnable
+          on its own.
+        </p>
+
+        {agent.briefs.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {agent.briefs.map((b) => (
+              <li key={b.id} className="flex items-start gap-2 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-slate-800">{b.name}</p>
+                  <p className="truncate text-xs text-slate-400">
+                    {b.content.slice(0, 140)}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {b.lastRunAt
+                      ? `Last researched ${formatDate(b.lastRunAt)}`
+                      : "Not researched yet"}
+                  </p>
+                </div>
+                <form action={runAgentBrief}>
+                  <input type="hidden" name="id" value={b.id} />
+                  <SubmitButton className="btn-ghost" pendingLabel="Researching…">
+                    Run
+                  </SubmitButton>
+                </form>
+                <form action={deleteAgentBrief}>
+                  <input type="hidden" name="id" value={b.id} />
+                  <input type="hidden" name="agentId" value={agent.id} />
+                  <button
+                    type="submit"
+                    className="pt-1 text-xs text-slate-400 hover:text-rose-600"
+                  >
+                    Remove
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form
+          action={addAgentBrief}
+          className="space-y-2 border-t border-slate-100 pt-3"
+        >
+          <input type="hidden" name="agentId" value={agent.id} />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="rb-name">
+                Brief name
+              </label>
+              <input
+                id="rb-name"
+                name="name"
+                placeholder="e.g. Q3 close automation opportunity"
+                className="field"
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="rb-file">
+                Upload PDF / Word{" "}
+                <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <input
+                id="rb-file"
+                name="file"
+                type="file"
+                accept=".pdf,.docx,.txt"
+                className="field"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor="rb-content">
+              Or paste the brief
+            </label>
+            <textarea
+              id="rb-content"
+              name="content"
+              rows={3}
+              placeholder="What should the agent go and find out?"
+              className="field"
+            />
+          </div>
+          <div className="flex justify-end">
+            <SubmitButton className="btn-ghost" pendingLabel="Adding…">
+              Add brief
+            </SubmitButton>
+          </div>
+        </form>
+      </section>
 
       {/* Pinned sources (optional) */}
       <section className="card space-y-3">

@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { runFinderAgent, researchAdHoc, type RunTally } from "@/lib/research/fetch";
+import {
+  runFinderAgent,
+  researchAdHoc,
+  researchFromBrief,
+  type RunTally,
+} from "@/lib/research/fetch";
 import { extractText } from "@/lib/research/extract";
 
 export async function createAgent(formData: FormData) {
@@ -128,28 +133,42 @@ async function recordRun(agentId: string, tally: RunTally) {
   ]);
 }
 
+// Record a failed run so the reason is visible in the agent's history rather
+// than disappearing into the server log.
+async function recordError(agentId: string, err: unknown) {
+  await prisma.agentRun.create({
+    data: {
+      agentId,
+      status: "error",
+      message:
+        err instanceof Error
+          ? err.message.slice(0, 300)
+          : String(err).slice(0, 300),
+    },
+  });
+  await prisma.agent.update({
+    where: { id: agentId },
+    data: { lastRunAt: new Date() },
+  });
+}
+
+// Run one agent, always leaving a run row behind (ok, nothing_new or error).
+async function runOne(agent: Parameters<typeof runFinderAgent>[0]) {
+  try {
+    const tally = await runFinderAgent(agent);
+    await recordRun(agent.id, tally);
+  } catch (err) {
+    await recordError(agent.id, err);
+  }
+}
+
 export async function runAgent(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const agent = await prisma.agent.findUnique({ where: { id } });
   if (!agent) return;
 
-  try {
-    const tally = await runFinderAgent(agent);
-    await recordRun(id, tally);
-  } catch (err) {
-    await prisma.agentRun.create({
-      data: {
-        agentId: id,
-        status: "error",
-        message: err instanceof Error ? err.message.slice(0, 300) : "error",
-      },
-    });
-    await prisma.agent.update({
-      where: { id },
-      data: { lastRunAt: new Date() },
-    });
-  }
+  await runOne(agent);
 
   revalidatePath(`/agents/${id}`);
   revalidatePath("/agents");
@@ -160,15 +179,75 @@ export async function runAllAgents() {
   const agents = await prisma.agent.findMany({
     where: { active: true, archetype: "finder" },
   });
-  for (const a of agents) {
+  for (const a of agents) await runOne(a);
+  revalidatePath("/agents");
+  revalidatePath("/research");
+}
+
+// --- Research briefs attached to an agent -------------------------------
+
+// Attach a brief (uploaded PDF/Word, or typed text) to an agent. Every run
+// researches each attached brief alongside the agent's briefing.
+export async function addAgentBrief(formData: FormData) {
+  const agentId = String(formData.get("agentId") ?? "");
+  if (!agentId) return;
+
+  const file = formData.get("file");
+  let name = String(formData.get("name") ?? "").trim();
+  let content = String(formData.get("content") ?? "").trim();
+
+  if (file instanceof File && file.size > 0) {
     try {
-      const tally = await runFinderAgent(a);
-      await recordRun(a.id, tally);
+      const text = await extractText(file);
+      if (text) {
+        content = [content, text].filter(Boolean).join("\n\n");
+        if (!name) name = file.name.replace(/\.[^.]+$/, "");
+      }
     } catch {
-      /* logged per-agent below in single runs; skip here */
+      return;
     }
   }
-  revalidatePath("/agents");
+  if (!content) return;
+
+  await prisma.researchBrief.create({
+    data: { agentId, name: name || "Untitled brief", content },
+  });
+  revalidatePath(`/agents/${agentId}`);
+}
+
+export async function deleteAgentBrief(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const agentId = String(formData.get("agentId") ?? "");
+  if (!id) return;
+  await prisma.researchBrief.delete({ where: { id } });
+  if (agentId) revalidatePath(`/agents/${agentId}`);
+}
+
+// Research a single brief now, without running the agent's whole beat.
+export async function runAgentBrief(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const brief = await prisma.researchBrief.findUnique({
+    where: { id },
+    include: { agent: true },
+  });
+  if (!brief) return;
+
+  try {
+    const tally = await researchFromBrief(brief.name, brief.content, {
+      agentId: brief.agentId,
+      agent: brief.agent,
+    });
+    if (brief.agentId) await recordRun(brief.agentId, tally);
+  } catch (err) {
+    if (brief.agentId) await recordError(brief.agentId, err);
+  }
+
+  await prisma.researchBrief.update({
+    where: { id },
+    data: { lastRunAt: new Date() },
+  });
+  if (brief.agentId) revalidatePath(`/agents/${brief.agentId}`);
   revalidatePath("/research");
 }
 

@@ -28,13 +28,8 @@ function tallyRelevance(t: RunTally, relevance: string) {
   else t.med += 1;
 }
 
-// The firm's global "what to look for" steering, if set.
-async function globalInstructions(): Promise<string> {
-  const s = await prisma.setting.findUnique({
-    where: { key: "research_instructions" },
-  });
-  return s?.value ?? "";
-}
+// NOTE: steering now lives on each Agent's `briefing` (the old global
+// `research_instructions` Setting was retired — it was being injected twice).
 
 // Run the AI summariser on one finding: summary, modules, relevance. Also
 // stamps the agent. No-op (leaves the finding raw) when there's no API key.
@@ -47,14 +42,11 @@ export async function processFinding(
   const finding = await prisma.finding.findUnique({ where: { id: findingId } });
   if (!finding) return;
 
-  const [modules, global] = await Promise.all([
-    prisma.module.findMany({ select: { id: true, name: true } }),
-    globalInstructions(),
-  ]);
+  const modules = await prisma.module.findMany({
+    select: { id: true, name: true },
+  });
 
-  const instructions = [global, opts?.instructions]
-    .filter((s) => s && s.trim())
-    .join("\n\n");
+  const instructions = (opts?.instructions ?? "").trim();
 
   const result = await summariseItem({
     title: finding.title,
@@ -175,21 +167,33 @@ async function agentFeedback(agentId: string): Promise<string> {
 // Run a Finder agent: a briefing-driven web search plus any pinned sources.
 // Returns the combined relevance tally + estimated cost.
 export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
-  const [modules, global, sources, feedback] = await Promise.all([
+  const [modules, sources, briefs, feedback] = await Promise.all([
     prisma.module.findMany({ select: { name: true } }),
-    globalInstructions(),
     prisma.source.findMany({ where: { agentId: agent.id, active: true } }),
+    prisma.researchBrief.findMany({
+      where: { agentId: agent.id },
+      orderBy: { createdAt: "asc" },
+    }),
     agentFeedback(agent.id),
   ]);
   const moduleNames = modules.map((m) => m.name);
   const total = emptyTally();
 
-  const doWeb = async (query: string, extra?: string | null) => {
-    const instructions = [global, agent.briefing, feedback, extra]
+  // `topic` is what actually gets searched, so it must be substantive —
+  // `withBriefing` avoids repeating the briefing when it IS the topic.
+  const doWeb = async (
+    topic: string,
+    opts?: { withBriefing?: boolean; extra?: string | null },
+  ) => {
+    const instructions = [
+      opts?.withBriefing ? agent.briefing : null,
+      feedback,
+      opts?.extra,
+    ]
       .filter((s) => s && s.trim())
       .join("\n\n");
     const { items, costCents } = await runWebResearch({
-      query,
+      query: topic,
       instructions,
       moduleNames,
       maxItems: agent.maxItems,
@@ -205,17 +209,45 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
     total.low += t.low;
   };
 
-  // 1) The briefing itself drives a run.
-  await doWeb(agent.mission || agent.name);
+  // 1) The briefing IS the research topic (falling back to mission/name).
+  const briefingTopic = (
+    agent.briefing?.trim() ||
+    agent.mission?.trim() ||
+    agent.name
+  ).slice(0, 1500);
+  await doWeb(briefingTopic, { withBriefing: false });
 
   // 2) Any pinned sources: web topics search their query; rss feeds are fetched.
   for (const s of sources) {
     if (s.type === "web") {
-      await doWeb(s.query || s.name, s.instructions);
+      await doWeb(s.query || s.name, {
+        withBriefing: true,
+        extra: s.instructions,
+      });
     } else {
-      total.created += await fetchRssFeed(s);
-      // rss items are summarised+scored via processFinding (counted as created)
+      // Count RSS items by their scored relevance so the breakdown adds up.
+      const ids = await fetchRssFeed(s);
+      if (ids.length) {
+        const scored = await prisma.finding.findMany({
+          where: { id: { in: ids } },
+          select: { relevance: true },
+        });
+        for (const f of scored) tallyRelevance(total, f.relevance);
+      }
     }
+  }
+
+  // 3) Any attached briefs (uploaded PDF/Word or typed): the brief's own text
+  //    is the topic, steered by the agent's briefing.
+  for (const b of briefs) {
+    await doWeb((b.content.trim() || b.name).slice(0, 1500), {
+      withBriefing: true,
+      extra: `Brief: ${b.name}`,
+    });
+    await prisma.researchBrief.update({
+      where: { id: b.id },
+      data: { lastRunAt: new Date() },
+    });
   }
 
   return total;
@@ -227,7 +259,7 @@ async function fetchRssFeed(source: {
   url: string;
   instructions: string | null;
   agentId: string | null;
-}): Promise<number> {
+}): Promise<string[]> {
   let feed;
   try {
     feed = await parser.parseURL(source.url);
@@ -236,7 +268,7 @@ async function fetchRssFeed(source: {
       where: { id: source.id },
       data: { lastFetchedAt: new Date() },
     });
-    return 0;
+    return [];
   }
 
   const createdIds: string[] = [];
@@ -271,26 +303,24 @@ async function fetchRssFeed(source: {
       agentId: source.agentId ?? undefined,
     });
   }
-  return createdIds.length;
+  return createdIds;
 }
 
 // Web research against a full brief (uploaded/typed), attributed to an agent.
+// The brief's text is the topic — that's what should actually be searched.
 export async function researchFromBrief(
   name: string,
   content: string,
   opts?: { agentId?: string | null; agent?: AgentCtx | null },
 ): Promise<RunTally> {
-  const [modules, global] = await Promise.all([
-    prisma.module.findMany({ select: { name: true } }),
-    globalInstructions(),
-  ]);
+  const modules = await prisma.module.findMany({ select: { name: true } });
   const a = opts?.agent;
-  const instructions = [global, a?.briefing, content.slice(0, 12000)]
+  const instructions = [a?.briefing, `Brief: ${name}`]
     .filter((s) => s && s.trim())
     .join("\n\n");
 
   const { items, costCents } = await runWebResearch({
-    query: name,
+    query: content.slice(0, 1500) || name,
     instructions,
     moduleNames: modules.map((m) => m.name),
     maxItems: a?.maxItems ?? 8,
@@ -310,14 +340,16 @@ export async function deepenFinding(
   findingId: string,
   note?: string,
 ): Promise<void> {
-  const finding = await prisma.finding.findUnique({ where: { id: findingId } });
+  const finding = await prisma.finding.findUnique({
+    where: { id: findingId },
+    include: { agent: { select: { briefing: true } } },
+  });
   if (!finding) return;
-  const global = await globalInstructions();
 
   const { text } = await webDeepDive({
     topic: `${finding.title}. ${finding.summary}`.slice(0, 500),
     note,
-    instructions: global,
+    instructions: finding.agent?.briefing ?? undefined,
   });
   if (!text) return;
 
@@ -329,15 +361,11 @@ export async function deepenFinding(
   });
 }
 
-// One-off ad-hoc research (no saved agent).
+// One-off ad-hoc research (no saved agent, so no standing briefing to apply).
 export async function researchAdHoc(query: string): Promise<RunTally> {
-  const [modules, global] = await Promise.all([
-    prisma.module.findMany({ select: { name: true } }),
-    globalInstructions(),
-  ]);
+  const modules = await prisma.module.findMany({ select: { name: true } });
   const { items, costCents } = await runWebResearch({
     query,
-    instructions: global,
     moduleNames: modules.map((m) => m.name),
     maxItems: 6,
   });
