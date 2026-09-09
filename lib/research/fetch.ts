@@ -140,19 +140,52 @@ type AgentCtx = {
   blockedDomains: string | null;
 };
 
+// Build a "signals from past triage" block from what the user has approved
+// (valuable) vs dismissed (noise) for this agent, so runs self-correct.
+async function agentFeedback(agentId: string): Promise<string> {
+  const [approved, dismissed] = await Promise.all([
+    prisma.finding.findMany({
+      where: { agentId, status: "approved" },
+      select: { title: true },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
+    prisma.finding.findMany({
+      where: { agentId, status: "dismissed" },
+      select: { title: true },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
+  ]);
+
+  const parts: string[] = [];
+  if (approved.length)
+    parts.push(
+      "Examples the team found VALUABLE (favour similar):\n- " +
+        approved.map((f) => f.title).join("\n- "),
+    );
+  if (dismissed.length)
+    parts.push(
+      "Examples marked NOT USEFUL (avoid similar):\n- " +
+        dismissed.map((f) => f.title).join("\n- "),
+    );
+  return parts.length ? "Signals from past triage:\n" + parts.join("\n\n") : "";
+}
+
 // Run a Finder agent: a briefing-driven web search plus any pinned sources.
 // Returns the combined relevance tally + estimated cost.
 export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
-  const [modules, global, sources] = await Promise.all([
+  const [modules, global, sources, feedback] = await Promise.all([
     prisma.module.findMany({ select: { name: true } }),
     globalInstructions(),
     prisma.source.findMany({ where: { agentId: agent.id, active: true } }),
+    agentFeedback(agent.id),
   ]);
   const moduleNames = modules.map((m) => m.name);
   const total = emptyTally();
 
   const doWeb = async (query: string, extra?: string | null) => {
-    const instructions = [global, agent.briefing, extra]
+    const instructions = [global, agent.briefing, feedback, extra]
       .filter((s) => s && s.trim())
       .join("\n\n");
     const { items, costCents } = await runWebResearch({

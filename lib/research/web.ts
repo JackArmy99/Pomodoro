@@ -42,17 +42,22 @@ export async function runWebResearch(input: {
     ? `\n\nStanding instructions from the firm (follow closely):\n${input.instructions.trim()}`
     : "";
 
-  const system =
+  // Stable system prefix (same across agents/runs) → cached to cut cost.
+  const stableSystem =
     "You are a research agent for an EPM (CCH Tagetik) consultancy. Use web " +
-    `search to find the most relevant items about the topic, preferring ones ` +
-    `from roughly the last ${lookback} days. ` +
-    `Return ONLY valid JSON: an array of up to ${max} objects of the form ` +
+    "search to find the most relevant recent items about the given topic. " +
+    "Return ONLY valid JSON: an array of objects of the form " +
     '{"title": string, "url": string, "summary": string, "modules": string[], ' +
     '"relevance": "high"|"medium"|"low", "relevanceReason": string}. ' +
     "summary is 2-3 sentences on what it is and why it matters to clients. " +
     "relevance reflects how important this is for the firm to act on, with a " +
     "one-line reason. modules must be chosen only from this list: " +
-    `${input.moduleNames.join(", ")}.` +
+    `${input.moduleNames.join(", ")}.`;
+
+  // Per-run details go in the user message so the system prefix stays cacheable.
+  const user =
+    `Topic: ${input.query}\n` +
+    `Return up to ${max} items, preferring ones from roughly the last ${lookback} days.` +
     steer;
 
   // Built-in web search server tool (runs on Anthropic's side).
@@ -69,9 +74,11 @@ export async function runWebResearch(input: {
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 3000,
-    system,
+    system: [
+      { type: "text", text: stableSystem, cache_control: { type: "ephemeral" } },
+    ],
     tools: [searchTool] as unknown as Anthropic.Tool[],
-    messages: [{ role: "user", content: `Topic: ${input.query}` }],
+    messages: [{ role: "user", content: user }],
   });
 
   const text = response.content
