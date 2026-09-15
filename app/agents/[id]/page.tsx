@@ -40,10 +40,23 @@ function runReason(message: string): string {
   if (message === "paused")
     return "search ran long and didn't finish (paused)";
   if (message === "no_text") return "the model returned no answer";
-  if (message === "no_items") return "the model found nothing relevant";
+  if (message === "no_items") return "no news";
   if (message.startsWith("parse_failed"))
     return "the model replied in prose, not the expected format";
   return message;
+}
+
+// Parse the JSON per-source breakdown stored on a run; empty on any problem.
+function parseRunDetail(
+  detail: string | null,
+): { label: string; created: number; reason?: string }[] {
+  if (!detail) return [];
+  try {
+    const parsed = JSON.parse(detail);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function AgentDetailPage({
@@ -437,16 +450,33 @@ export default async function AgentDetailPage({
           <p className="card text-sm text-slate-500">No runs yet.</p>
         ) : (
           <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
-            {agent.runs.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
-              >
-                <span className="text-slate-500">{formatDate(r.ranAt)}</span>
-                <span className="text-slate-700">{runStatusLabel(r)}</span>
-                <span className="text-slate-400">{costLabel(r.estCostCents)}</span>
-              </li>
-            ))}
+            {agent.runs.map((r) => {
+              const perSource = parseRunDetail(r.detail);
+              return (
+                <li key={r.id} className="px-3 py-2 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-slate-500">{formatDate(r.ranAt)}</span>
+                    <span className="text-slate-700">{runStatusLabel(r)}</span>
+                    <span className="text-slate-400">
+                      {costLabel(r.estCostCents)}
+                    </span>
+                  </div>
+                  {perSource.length > 0 && (
+                    <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+                      {perSource.map((s, i) => (
+                        <li key={i}>
+                          <span className="text-slate-500">{s.label}:</span>{" "}
+                          {s.created}
+                          {s.created === 0 && s.reason
+                            ? ` (${runReason(s.reason)})`
+                            : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

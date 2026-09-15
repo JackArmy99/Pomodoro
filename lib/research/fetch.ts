@@ -5,6 +5,14 @@ import { runWebResearch, webDeepDive, type WebItem } from "@/lib/research/web";
 
 const parser = new Parser({ timeout: 15000 });
 
+// One entry per search/source in a run, so the history can show exactly which
+// beat produced what — the honest answer to "no news vs. misfired".
+export type SourceOutcome = {
+  label: string;
+  created: number;
+  reason?: string; // when created is 0: no_items | paused | parse_failed | …
+};
+
 export type RunTally = {
   created: number;
   high: number;
@@ -14,6 +22,7 @@ export type RunTally = {
   // Diagnostic for a run that created nothing (from runWebResearch); undefined
   // when items were created. Surfaced in the agent's run history.
   reason?: string;
+  sources: SourceOutcome[];
 };
 
 const emptyTally = (): RunTally => ({
@@ -22,6 +31,7 @@ const emptyTally = (): RunTally => ({
   med: 0,
   low: 0,
   costCents: 0,
+  sources: [],
 });
 
 function tallyRelevance(t: RunTally, relevance: string) {
@@ -195,6 +205,7 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
   // `topic` is what actually gets searched, so it must be substantive —
   // `withBriefing` avoids repeating the briefing when it IS the topic.
   const doWeb = async (
+    label: string,
     topic: string,
     opts?: { withBriefing?: boolean; extra?: string | null },
   ) => {
@@ -222,6 +233,7 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
     total.high += t.high;
     total.med += t.med;
     total.low += t.low;
+    total.sources.push({ label, created: t.created, reason });
   };
 
   // 1) The briefing IS the research topic — but ONLY when there are no pinned
@@ -235,13 +247,13 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
       agent.mission?.trim() ||
       agent.name
     ).slice(0, 1500);
-    await doWeb(briefingTopic, { withBriefing: false });
+    await doWeb("Briefing", briefingTopic, { withBriefing: false });
   }
 
   // 2) Any pinned sources: web topics search their query; rss feeds are fetched.
   for (const s of sources) {
     if (s.type === "web") {
-      await doWeb(s.query || s.name, {
+      await doWeb(s.name, s.query || s.name, {
         withBriefing: true,
         extra: s.instructions,
       });
@@ -255,13 +267,18 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
         });
         for (const f of scored) tallyRelevance(total, f.relevance);
       }
+      total.sources.push({
+        label: s.name,
+        created: ids.length,
+        reason: ids.length === 0 ? "no_items" : undefined,
+      });
     }
   }
 
   // 3) Any attached briefs (uploaded PDF/Word or typed): the brief's own text
   //    is the topic, steered by the agent's briefing.
   for (const b of briefs) {
-    await doWeb((b.content.trim() || b.name).slice(0, 1500), {
+    await doWeb(`Brief: ${b.name}`, (b.content.trim() || b.name).slice(0, 1500), {
       withBriefing: true,
       extra: `Brief: ${b.name}`,
     });

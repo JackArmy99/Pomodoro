@@ -2,6 +2,14 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — Per-source run visibility
+
+Answers "no news vs. misfired": each run now records a per-source breakdown
+(`AgentRun.detail` JSON) — the briefing search, each pinned source, each brief —
+with its own count and, when zero, a plain reason ("no news"). Shown under each
+run in the agent's history. `RunTally.sources` carries it up from
+`runFinderAgent`; `executeRun`/`recordRun` persist it.
+
 ## 2026-09 — Domain grounding + regulatory beats + verify/deadline
 
 The live Finder found real market news but mapped it to the wrong modules

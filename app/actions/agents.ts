@@ -104,6 +104,7 @@ async function recordRun(agentId: string, tally: RunTally) {
         status: tally.created === 0 ? "nothing_new" : "ok",
         // On an empty run, keep the diagnostic so it isn't a black box.
         message: tally.created === 0 ? tally.reason ?? null : null,
+        detail: tally.sources.length ? JSON.stringify(tally.sources) : null,
       },
     }),
     prisma.agent.update({
@@ -169,6 +170,7 @@ async function executeRun(
         estCostCents: tally.costCents,
         status: tally.created === 0 ? "nothing_new" : "ok",
         message: tally.created === 0 ? tally.reason ?? null : null,
+        detail: tally.sources.length ? JSON.stringify(tally.sources) : null,
       },
     });
     await prisma.agent.update({

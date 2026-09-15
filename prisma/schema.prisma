@@ -92,8 +92,9 @@ model AgentRun {
   medCount     Int      @default(0)
   lowCount     Int      @default(0)
   estCostCents Int      @default(0)
-  status       String   @default("ok") // ok | nothing_new | error
+  status       String   @default("ok") // ok | nothing_new | error | running
   message      String?
+  detail       String? // JSON: per-source breakdown [{label, created, reason}]
 }
 
 // Simple key/value app settings (e.g. the global research instructions).
