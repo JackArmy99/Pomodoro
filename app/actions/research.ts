@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { processFinding, deepenFinding } from "@/lib/research/fetch";
+import { CLEARS_VERIFICATION, isVerifiedCurrent } from "@/lib/research/revision";
 import { getYouTubeTranscript } from "@/lib/research/youtube";
 
 // ---- Manual quick-adds to the inbox --------------------------------------
@@ -94,7 +95,7 @@ export async function updateFinding(formData: FormData) {
   await prisma.$transaction([
     prisma.finding.update({
       where: { id },
-      data: { summary, relevance },
+      data: { summary, relevance, ...CLEARS_VERIFICATION },
     }),
     prisma.findingModule.deleteMany({ where: { findingId: id } }),
     ...moduleIds.map((moduleId) =>
@@ -106,14 +107,31 @@ export async function updateFinding(formData: FormData) {
   revalidatePath(`/research/${id}`);
 }
 
-// Mark a finding's source as human-verified (or clear it). Fan-out to client
+// Mark a finding's source as human-verified (or clear it). The tick is bound to
+// the revision reviewed, so a later edit invalidates it. Fan-out to client
 // opportunities is gated on this — a defence against confident but wrong AI
 // specifics reaching a client.
 export async function setFindingVerified(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const verified = String(formData.get("verified") ?? "") === "true";
-  await prisma.finding.update({ where: { id }, data: { verified } });
+
+  const finding = await prisma.finding.findUnique({
+    where: { id },
+    select: { contentRevision: true },
+  });
+  if (!finding) return;
+
+  await prisma.finding.update({
+    where: { id },
+    data: verified
+      ? {
+          verified: true,
+          verifiedRevision: finding.contentRevision,
+          verifiedAt: new Date(),
+        }
+      : { verified: false, verifiedRevision: null, verifiedAt: null },
+  });
   revalidatePath("/research");
   revalidatePath(`/research/${id}`);
 }
@@ -142,65 +160,83 @@ export async function finalizeApprove(formData: FormData) {
   });
   if (!finding) return;
 
-  // Accuracy gate: don't let unverified AI specifics fan out to clients.
-  if (!finding.verified) {
+  // Replay guard: a double-submit (or a retried request) must not create a
+  // second Brief and another full set of client items.
+  if (finding.status === "approved" || finding.briefId) {
+    redirect("/research");
+  }
+
+  // Accuracy gate: don't let unverified AI specifics fan out to clients — and
+  // the tick must belong to the content as it stands now, not an earlier edit.
+  if (!isVerifiedCurrent(finding)) {
     redirect(`/research/${id}?error=verify`);
   }
 
-  const brief = await prisma.brief.create({
-    data: {
-      title: finding.title,
-      summary: finding.summary || finding.rawContent.slice(0, 600),
-      sourceUrl: finding.sourceUrl,
-      sourceType: finding.sourceType,
-      publishedAt: finding.publishedAt,
-      modules: {
-        create: finding.modules.map((fm) => ({ moduleId: fm.moduleId })),
-      },
-    },
-  });
-
+  // Read the form before the transaction; nothing here touches the network, so
+  // the whole fan-out is safe to commit atomically (all of it, or none).
   const clientIds = formData
     .getAll("clientIds")
     .map((v) => String(v))
     .filter(Boolean);
+  const choices = clientIds.map((clientId) => ({
+    clientId,
+    type: String(formData.get(`type_${clientId}`) ?? "opportunity"),
+  }));
 
-  for (const clientId of clientIds) {
-    const type = String(formData.get(`type_${clientId}`) ?? "opportunity");
+  await prisma.$transaction(async (tx) => {
+    // Re-check inside the transaction so two concurrent submits can't both pass.
+    const fresh = await tx.finding.findUnique({
+      where: { id },
+      select: { status: true, briefId: true },
+    });
+    if (!fresh || fresh.status === "approved" || fresh.briefId) return;
 
-    // Always link the client to the brief (the intel record).
-    await prisma.briefClient
-      .create({ data: { briefId: brief.id, clientId } })
-      .catch(() => {});
-
-    if (type === "opportunity") {
-      await prisma.opportunity.create({
-        data: {
-          title: finding.title,
-          description: finding.summary,
-          clientId,
-          stage: "open",
-          deadline: finding.effectiveDate,
-          originBriefId: brief.id,
+    const brief = await tx.brief.create({
+      data: {
+        title: finding.title,
+        summary: finding.summary || finding.rawContent.slice(0, 600),
+        sourceUrl: finding.sourceUrl,
+        sourceType: finding.sourceType,
+        publishedAt: finding.publishedAt,
+        modules: {
+          create: finding.modules.map((fm) => ({ moduleId: fm.moduleId })),
         },
-      });
-    } else if (type === "task") {
-      await prisma.task.create({
-        data: {
-          title: finding.title,
-          notes: finding.summary,
-          clientId,
-          urgency: finding.relevance === "high" ? "high" : "normal",
-          dueDate: finding.effectiveDate,
-        },
-      });
+      },
+    });
+
+    for (const { clientId, type } of choices) {
+      // Always link the client to the brief (the intel record).
+      await tx.briefClient.create({ data: { briefId: brief.id, clientId } });
+
+      if (type === "opportunity") {
+        await tx.opportunity.create({
+          data: {
+            title: finding.title,
+            description: finding.summary,
+            clientId,
+            stage: "open",
+            deadline: finding.effectiveDate,
+            originBriefId: brief.id,
+          },
+        });
+      } else if (type === "task") {
+        await tx.task.create({
+          data: {
+            title: finding.title,
+            notes: finding.summary,
+            clientId,
+            urgency: finding.relevance === "high" ? "high" : "normal",
+            dueDate: finding.effectiveDate,
+          },
+        });
+      }
+      // type === "brief" → the BriefClient link above is enough.
     }
-    // type === "brief" → the BriefClient link above is enough.
-  }
 
-  await prisma.finding.update({
-    where: { id },
-    data: { status: "approved", briefId: brief.id },
+    await tx.finding.update({
+      where: { id },
+      data: { status: "approved", briefId: brief.id },
+    });
   });
 
   revalidatePath("/research");

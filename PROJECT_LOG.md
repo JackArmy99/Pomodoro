@@ -2,6 +2,34 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — Verification bound to a revision; approval made atomic
+
+Two defects found by the video-research brief's static review of this repo, both
+real, both fixed ahead of that feature (its milestone 4 assumes them):
+
+- **Verification was not revision-aware.** `Finding.verified` was a plain
+  boolean, so editing, re-summarising or digging deeper on a *verified* finding
+  left the tick in place while the content changed — unreviewed text could reach
+  a client. Now `contentRevision` / `verifiedRevision` / `verifiedAt`:
+  `CLEARS_VERIFICATION` (`lib/research/revision.ts`) is spread into every content
+  mutation (`updateFinding`, `processFinding`, `deepenFinding`), and
+  `isVerifiedCurrent()` — tick matches current revision — gates the UI and
+  `finalizeApprove`.
+- **Approval was neither atomic nor replay-safe.** It created the Brief, looped
+  clients creating Opportunities/Tasks, then marked the finding approved, with no
+  transaction — a double-submit duplicated everything. Now one
+  `prisma.$transaction` with a re-check inside, plus an early guard on
+  already-approved findings.
+
+### Video research (YouTube Retriever) — decisions taken
+Reviewed the "Beacon video research V1" brief. Settled: **captions-first V1** —
+full timestamped transcript, cited summary, searchable knowledge; **no** video
+download / frame analysis (defers the yt-dlp + ffmpeg + vision cost, the Windows
+media-tooling setup, and the ToS/IP-block exposure) — visuals become V1b. Storage
+starts **lean** (transcript segments + cited summary + FTS) but the brief's full
+claim/citation/chunk evidence graph remains the intended destination, not a
+discarded idea. A durable local worker (not a detached promise) owns video jobs.
+
 ## 2026-09 — Per-source run visibility
 
 Answers "no news vs. misfired": each run now records a per-source breakdown

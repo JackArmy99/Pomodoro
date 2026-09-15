@@ -2,6 +2,7 @@ import Parser from "rss-parser";
 import { prisma } from "@/lib/db";
 import { summariseItem, hasApiKey } from "@/lib/anthropic";
 import { runWebResearch, webDeepDive, type WebItem } from "@/lib/research/web";
+import { CLEARS_VERIFICATION } from "@/lib/research/revision";
 
 const parser = new Parser({ timeout: 15000 });
 
@@ -82,6 +83,7 @@ export async function processFinding(
         relevance: result.relevance,
         relevanceReason: result.relevanceReason,
         aiProcessed: true,
+        ...CLEARS_VERIFICATION, // re-summarising changes what a reviewer read
         ...(opts?.agentId ? { agentId: opts.agentId } : {}),
       },
     }),
@@ -396,7 +398,7 @@ export async function deepenFinding(
   const summary = `${finding.summary}\n\n— ${stamp} —\n${text}`.trim();
   await prisma.finding.update({
     where: { id: findingId },
-    data: { summary },
+    data: { summary, ...CLEARS_VERIFICATION }, // enrichment changes the content
   });
 }
 

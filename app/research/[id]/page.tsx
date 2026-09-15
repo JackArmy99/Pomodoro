@@ -10,6 +10,7 @@ import {
   setFindingVerified,
 } from "@/app/actions/research";
 import SubmitButton from "@/components/SubmitButton";
+import { isVerifiedCurrent } from "@/lib/research/revision";
 import {
   formatDate,
   RELEVANCE_STYLES,
@@ -34,6 +35,9 @@ export default async function FindingDetailPage({
     },
   });
   if (!finding) notFound();
+
+  // Verified only counts for the revision actually reviewed.
+  const verifiedNow = isVerifiedCurrent(finding);
 
   const allModules = await prisma.module.findMany({ orderBy: { name: "asc" } });
   const currentModuleIds = new Set(finding.modules.map((m) => m.moduleId));
@@ -106,12 +110,12 @@ export default async function FindingDetailPage({
           )}
           <span
             className={`chip ${
-              finding.verified
+              verifiedNow
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                 : "border-slate-200 bg-slate-100 text-slate-500"
             }`}
           >
-            {finding.verified ? "Verified" : "Unverified"}
+            {verifiedNow ? "Verified" : "Unverified"}
           </span>
           <span className="text-xs text-slate-400">
             {formatDate(finding.publishedAt ?? finding.createdAt)}
@@ -139,18 +143,18 @@ export default async function FindingDetailPage({
         <input
           type="hidden"
           name="verified"
-          value={finding.verified ? "false" : "true"}
+          value={verifiedNow ? "false" : "true"}
         />
         <p className="text-xs text-slate-500">
-          {finding.verified
+          {verifiedNow
             ? "Source verified — this can fan out to client opportunities."
             : "Check the source link is real and the facts/dates are right, then mark verified. Required before approving to clients."}
         </p>
         <button
           type="submit"
-          className={finding.verified ? "btn-ghost" : "btn"}
+          className={verifiedNow ? "btn-ghost" : "btn"}
         >
-          {finding.verified ? "Mark unverified" : "Mark source verified"}
+          {verifiedNow ? "Mark unverified" : "Mark source verified"}
         </button>
       </form>
 
@@ -257,7 +261,7 @@ export default async function FindingDetailPage({
             Mark the source verified above before approving to clients.
           </p>
         )}
-        {!finding.verified && (
+        {!verifiedNow && (
           <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
             This finding is <strong>unverified</strong> — verify the source above
             to enable approval.
@@ -312,9 +316,9 @@ export default async function FindingDetailPage({
           <button
             type="submit"
             className="btn"
-            disabled={!finding.verified}
+            disabled={!verifiedNow}
             title={
-              finding.verified ? undefined : "Verify the source first"
+              verifiedNow ? undefined : "Verify the source first"
             }
           >
             Approve

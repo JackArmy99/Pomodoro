@@ -132,7 +132,13 @@ model Finding {
   relevanceReason String?
   sourceBody      String? // issuing body/site: EFRAG, EIOPA, OECD, EUR-Lex, IASB…
   effectiveDate   DateTime? // when this forces client work (drives the deadline)
-  verified        Boolean         @default(false) // a human confirmed the source before fan-out
+  // Verification is tied to a REVISION of the content, not the record: any edit,
+  // re-summary or dig-deeper bumps contentRevision and clears verification, so a
+  // stale tick can never carry changed content through to a client.
+  verified        Boolean         @default(false) // == (verifiedRevision == contentRevision)
+  contentRevision Int             @default(0)
+  verifiedRevision Int?
+  verifiedAt      DateTime?
   agentId         String? // which agent surfaced it (null = pasted / ad-hoc)
   agent           Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
   briefId         String? // set once approved into a Brief

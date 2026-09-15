@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { hasApiKey } from "@/lib/anthropic";
 import { ingestPaste, ingestVideo, dismissFinding } from "@/app/actions/research";
 import SubmitButton from "@/components/SubmitButton";
+import { isVerifiedCurrent } from "@/lib/research/revision";
 import {
   formatDate,
   RELEVANCE_STYLES,
@@ -107,7 +108,7 @@ export default async function ResearchInboxPage({
                     Effective {formatDate(f.effectiveDate)}
                   </span>
                 )}
-                {!f.verified && (
+                {!isVerifiedCurrent(f) && (
                   <span className="chip border-slate-200 bg-slate-100 text-slate-500">
                     Unverified
                   </span>
