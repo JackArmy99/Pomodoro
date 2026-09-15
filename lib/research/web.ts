@@ -199,11 +199,12 @@ export async function runWebResearch(input: {
   // Diagnose an empty run so the cause is visible, not a silent "Nothing new".
   let reason: string | undefined;
   if (items.length === 0) {
+    const emptyArray = /^\s*\[\s*\]\s*$/.test(text.replace(/```(?:json)?/gi, "").trim());
     if (response.stop_reason === "pause_turn") reason = "paused";
     else if (!text) reason = "no_text";
-    else if (raw.length === 0)
-      reason = `parse_failed: ${text.slice(0, 300)}`;
-    else reason = "no_items";
+    else if (raw.length === 0 && !emptyArray)
+      reason = `parse_failed: ${text.slice(0, 200)}`;
+    else reason = "no_items"; // model searched and returned nothing to report
     console.warn(
       `[research] empty run — stop=${response.stop_reason} reason=${reason}`,
     );

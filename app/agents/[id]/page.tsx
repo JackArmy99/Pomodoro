@@ -21,6 +21,21 @@ function costLabel(cents: number): string {
 }
 
 // Turn a diagnostic reason code into a plain-English hint in run history.
+function runStatusLabel(r: {
+  status: string;
+  message: string | null;
+  foundCount: number;
+  highCount: number;
+  medCount: number;
+  lowCount: number;
+}): string {
+  if (r.status === "running") return "Running…";
+  if (r.status === "error") return `Error — ${r.message ?? "failed"}`;
+  if (r.status === "nothing_new")
+    return `Nothing new${r.message ? ` — ${runReason(r.message)}` : ""}`;
+  return `Found ${r.foundCount} · ${r.highCount} high / ${r.medCount} med / ${r.lowCount} low`;
+}
+
 function runReason(message: string): string {
   if (message === "paused")
     return "search ran long and didn't finish (paused)";
@@ -51,6 +66,8 @@ export default async function AgentDetailPage({
   });
   if (!agent) notFound();
 
+  const running = agent.runs[0]?.status === "running";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -58,10 +75,16 @@ export default async function AgentDetailPage({
           ← All agents
         </Link>
         <div className="flex items-center gap-2">
-          <form action={runAgent}>
-            <input type="hidden" name="id" value={agent.id} />
-            <SubmitButton pendingLabel="Researching…">Run now</SubmitButton>
-          </form>
+          {running ? (
+            <button type="button" disabled className="btn disabled:opacity-60">
+              Running…
+            </button>
+          ) : (
+            <form action={runAgent}>
+              <input type="hidden" name="id" value={agent.id} />
+              <SubmitButton pendingLabel="Starting…">Run now</SubmitButton>
+            </form>
+          )}
           <form action={deleteAgent}>
             <input type="hidden" name="id" value={agent.id} />
             <button
@@ -420,13 +443,7 @@ export default async function AgentDetailPage({
                 className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
               >
                 <span className="text-slate-500">{formatDate(r.ranAt)}</span>
-                <span className="text-slate-700">
-                  {r.status === "error"
-                    ? `Error — ${r.message ?? "failed"}`
-                    : r.status === "nothing_new"
-                      ? `Nothing new${r.message ? ` — ${runReason(r.message)}` : ""}`
-                      : `Found ${r.foundCount} · ${r.highCount} high / ${r.medCount} med / ${r.lowCount} low`}
-                </span>
+                <span className="text-slate-700">{runStatusLabel(r)}</span>
                 <span className="text-slate-400">{costLabel(r.estCostCents)}</span>
               </li>
             ))}

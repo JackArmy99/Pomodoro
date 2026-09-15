@@ -132,13 +132,63 @@ async function recordError(agentId: string, err: unknown) {
   });
 }
 
-// Run one agent, always leaving a run row behind (ok, nothing_new or error).
-async function runOne(agent: Parameters<typeof runFinderAgent>[0]) {
+// A run can take minutes (web search is slow), which outruns the browser's
+// patience. So we start it in the BACKGROUND: create a "running" row, kick off
+// the work without awaiting, and return immediately. The dynamic pages show the
+// live state on the next refresh; the row is finalised when the work completes.
+// (This relies on a long-lived local dev server — fine until we host.)
+
+const RUNNING_STALE_MS = 10 * 60 * 1000;
+
+async function isAlreadyRunning(agentId: string): Promise<boolean> {
+  const running = await prisma.agentRun.findFirst({
+    where: {
+      agentId,
+      status: "running",
+      ranAt: { gt: new Date(Date.now() - RUNNING_STALE_MS) },
+    },
+  });
+  return Boolean(running);
+}
+
+// Do the work and finalise the pre-created "running" row in place.
+async function executeRun(
+  agent: Parameters<typeof runFinderAgent>[0],
+  runId: string,
+) {
   try {
     const tally = await runFinderAgent(agent);
-    await recordRun(agent.id, tally);
+    await prisma.agentRun.update({
+      where: { id: runId },
+      data: {
+        ranAt: new Date(),
+        foundCount: tally.created,
+        highCount: tally.high,
+        medCount: tally.med,
+        lowCount: tally.low,
+        estCostCents: tally.costCents,
+        status: tally.created === 0 ? "nothing_new" : "ok",
+        message: tally.created === 0 ? tally.reason ?? null : null,
+      },
+    });
+    await prisma.agent.update({
+      where: { id: agent.id },
+      data: { lastRunAt: new Date() },
+    });
   } catch (err) {
-    await recordError(agent.id, err);
+    await prisma.agentRun
+      .update({
+        where: { id: runId },
+        data: {
+          ranAt: new Date(),
+          status: "error",
+          message:
+            err instanceof Error
+              ? err.message.slice(0, 300)
+              : String(err).slice(0, 300),
+        },
+      })
+      .catch(() => {});
   }
 }
 
@@ -147,21 +197,37 @@ export async function runAgent(formData: FormData) {
   if (!id) return;
   const agent = await prisma.agent.findUnique({ where: { id } });
   if (!agent) return;
+  if (await isAlreadyRunning(id)) return; // don't stack a second paid run
 
-  await runOne(agent);
+  const run = await prisma.agentRun.create({
+    data: { agentId: id, status: "running" },
+  });
+  void executeRun(agent, run.id); // detached — returns to the browser at once
 
   revalidatePath(`/agents/${id}`);
   revalidatePath("/agents");
-  revalidatePath("/research");
 }
 
 export async function runAllAgents() {
   const agents = await prisma.agent.findMany({
     where: { active: true, archetype: "finder" },
   });
-  for (const a of agents) await runOne(a);
+
+  const queued: { agent: (typeof agents)[number]; runId: string }[] = [];
+  for (const a of agents) {
+    if (await isAlreadyRunning(a.id)) continue;
+    const run = await prisma.agentRun.create({
+      data: { agentId: a.id, status: "running" },
+    });
+    queued.push({ agent: a, runId: run.id });
+  }
+
+  // One detached worker runs them sequentially, to be gentle on rate limits.
+  void (async () => {
+    for (const q of queued) await executeRun(q.agent, q.runId);
+  })();
+
   revalidatePath("/agents");
-  revalidatePath("/research");
 }
 
 // --- Research briefs attached to an agent -------------------------------

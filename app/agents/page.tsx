@@ -55,6 +55,10 @@ export default async function AgentsPage() {
             Your research team. Each agent works to its briefing; findings land
             in the inbox, scored by relevance.
           </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Runs happen in the background and can take a minute or two — the card
+            shows “Running…”. Refresh to see findings as they land.
+          </p>
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-2">
@@ -154,13 +158,16 @@ export default async function AgentsPage() {
               const med = mine.filter((f) => f.relevance === "medium").length;
               const low = mine.filter((f) => f.relevance === "low").length;
               const lr = lastRun.get(a.id);
+              const running = lr?.status === "running";
               const lastLabel = !lr
                 ? "Not run yet"
-                : lr.status === "error"
-                  ? "Error — check agent"
-                  : lr.status === "nothing_new"
-                    ? "Nothing new"
-                    : `Found ${lr.foundCount}`;
+                : running
+                  ? "Running…"
+                  : lr.status === "error"
+                    ? "Error — check agent"
+                    : lr.status === "nothing_new"
+                      ? "Nothing new"
+                      : `Found ${lr.foundCount}`;
               return (
                 <div
                   key={a.id}
@@ -186,15 +193,28 @@ export default async function AgentsPage() {
                         </p>
                       )}
                     </div>
-                    <form action={runAgent}>
-                      <input type="hidden" name="id" value={a.id} />
-                      <SubmitButton
-                        className="btn py-1"
-                        pendingLabel="Researching…"
+                    {running ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="btn py-1 disabled:cursor-wait disabled:opacity-60"
                       >
-                        Run
-                      </SubmitButton>
-                    </form>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span
+                            aria-hidden
+                            className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70"
+                          />
+                          Running…
+                        </span>
+                      </button>
+                    ) : (
+                      <form action={runAgent}>
+                        <input type="hidden" name="id" value={a.id} />
+                        <SubmitButton className="btn py-1" pendingLabel="Starting…">
+                          Run
+                        </SubmitButton>
+                      </form>
+                    )}
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                     <span className="chip border-slate-200 bg-slate-100 text-slate-600">
