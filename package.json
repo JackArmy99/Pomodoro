@@ -18,6 +18,8 @@
     "backup": "node scripts/backup.mjs",
     "predoctor": "node scripts/ensure-env.mjs",
     "doctor": "node scripts/doctor.mjs",
+    "prerefresh:grounding": "node scripts/ensure-env.mjs",
+    "refresh:grounding": "node scripts/refresh-grounding.mjs",
     "update": "node scripts/update.mjs"
   },
   "prisma": {

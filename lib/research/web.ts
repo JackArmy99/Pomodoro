@@ -139,8 +139,10 @@ export async function runWebResearch(input: {
     "weak match). sourceBody is the issuing body or site (e.g. EFRAG, EIOPA, " +
     "OECD, EUR-Lex, IASB, European Commission, ESMA, DNB, or the publisher). " +
     "effectiveDate is the ISO date (YYYY-MM-DD) this forces client work if the " +
-    "item states one, else null. Always include the real source url; never " +
-    "assert a specific date or figure without one.";
+    "item states one, else null. For url, use ONLY a link that actually " +
+    "appeared in your web search results — never invent, guess or construct a " +
+    "url; if you do not have the exact link from the results, set url to \"\". " +
+    "Never assert a specific date or figure without a real source url.";
 
   // Per-run details go in the user message so the system prefix stays cacheable.
   // The final line lands *after* any tool use — where a weaker model most needs
