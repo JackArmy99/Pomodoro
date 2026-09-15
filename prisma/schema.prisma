@@ -19,14 +19,14 @@ datasource db {
 // hub hangs off clients. `name` holds the CODE NAME — no real names stored, so
 // it's safe to share screens and information.
 model Client {
-  id            String          @id @default(cuid())
+  id            String         @id @default(cuid())
   name          String // code name, e.g. "Falcon"
-  type          String          @default("active") // "active" | "prospect"
-  color         String          @default("#6366f1")
+  type          String         @default("active") // "active" | "prospect"
+  color         String         @default("#6366f1")
   hosting       String? // "SaaS Public" | "SaaS Private" | "On Premises"
   notes         String?
-  ownerId       String          @default("me") // becomes a real user id once teammates log in
-  createdAt     DateTime        @default(now())
+  ownerId       String         @default("me") // becomes a real user id once teammates log in
+  createdAt     DateTime       @default(now())
   briefs        BriefClient[]
   opportunities Opportunity[]
   tasks         Task[]
@@ -118,33 +118,36 @@ model ResearchBrief {
 // A raw item picked up by the agents (or pasted in), waiting in the triage
 // inbox. Approving one turns it into a Brief.
 model Finding {
-  id              String          @id @default(cuid())
-  title           String
-  summary         String          @default("")
-  rawContent      String          @default("")
-  sourceUrl       String?
-  sourceType      String          @default("rss") // rss | paste | web | video
-  externalId      String?         @unique // dedupe key (feed guid/link)
-  publishedAt     DateTime?
-  status          String          @default("pending") // pending | approved | dismissed
-  aiProcessed     Boolean         @default(false)
-  relevance       String          @default("medium") // high | medium | low
-  relevanceReason String?
-  sourceBody      String? // issuing body/site: EFRAG, EIOPA, OECD, EUR-Lex, IASB…
-  effectiveDate   DateTime? // when this forces client work (drives the deadline)
+  id                String           @id @default(cuid())
+  title             String
+  summary           String           @default("")
+  rawContent        String           @default("")
+  sourceUrl         String?
+  sourceType        String           @default("rss") // rss | paste | web | video
+  externalId        String?          @unique // dedupe key (feed guid/link)
+  publishedAt       DateTime?
+  status            String           @default("pending") // pending | approved | dismissed
+  aiProcessed       Boolean          @default(false)
+  relevance         String           @default("medium") // high | medium | low
+  relevanceReason   String?
+  sourceBody        String? // issuing body/site: EFRAG, EIOPA, OECD, EUR-Lex, IASB…
+  effectiveDate     DateTime? // when this forces client work (drives the deadline)
   // Verification is tied to a REVISION of the content, not the record: any edit,
   // re-summary or dig-deeper bumps contentRevision and clears verification, so a
   // stale tick can never carry changed content through to a client.
-  verified        Boolean         @default(false) // == (verifiedRevision == contentRevision)
-  contentRevision Int             @default(0)
-  verifiedRevision Int?
-  verifiedAt      DateTime?
-  agentId         String? // which agent surfaced it (null = pasted / ad-hoc)
-  agent           Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  briefId         String? // set once approved into a Brief
-  ownerId         String          @default("me")
-  createdAt       DateTime        @default(now())
-  modules         FindingModule[]
+  verified          Boolean          @default(false) // == (verifiedRevision == contentRevision)
+  contentRevision   Int              @default(0)
+  verifiedRevision  Int?
+  verifiedAt        DateTime?
+  agentId           String? // which agent surfaced it (null = pasted / ad-hoc)
+  agent             Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  // Video research: at most one Finding per knowledge source (enforced unique).
+  knowledgeSourceId String?          @unique
+  knowledgeSource   KnowledgeSource? @relation(fields: [knowledgeSourceId], references: [id], onDelete: SetNull)
+  briefId           String? // set once approved into a Brief
+  ownerId           String           @default("me")
+  createdAt         DateTime         @default(now())
+  modules           FindingModule[]
 }
 
 // Modules the summariser suggested a finding is about.
@@ -192,19 +195,19 @@ model Person {
 // support tickets. "bookedInTeams" is a simple tick you set once you've put the
 // task into your own Teams/Outlook calendar (no calendar integration).
 model Task {
-  id             String    @id @default(cuid())
-  title          String
-  notes          String?
-  clientId       String?
-  client         Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  urgency        String    @default("normal") // low | normal | high | urgent
-  dueDate        DateTime?
+  id              String    @id @default(cuid())
+  title           String
+  notes           String?
+  clientId        String?
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  urgency         String    @default("normal") // low | normal | high | urgent
+  dueDate         DateTime?
   estimateMinutes Int? // "time consumption"
-  bookedInTeams  Boolean   @default(false)
-  done           Boolean   @default(false)
-  ownerId        String    @default("me")
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  bookedInTeams   Boolean   @default(false)
+  done            Boolean   @default(false)
+  ownerId         String    @default("me")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 // A piece of intelligence: a vendor update, newsletter item, or video digest.
@@ -246,23 +249,23 @@ model BriefClient {
 
 // A potential piece of work with a client or prospect — often sparked by a brief.
 model Opportunity {
-  id            String    @id @default(cuid())
+  id            String               @id @default(cuid())
   title         String
-  description   String    @default("")
+  description   String               @default("")
   clientId      String?
-  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  stage         String    @default("open") // open | pursuing | won | lost
+  client        Client?              @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  stage         String               @default("open") // open | pursuing | won | lost
   value         Int? // rough deal value, whole currency units
   likelihood    Int? // 0-100 %
   nextStep      String?
   deadline      DateTime?
   originBriefId String?
-  originBrief   Brief?    @relation(fields: [originBriefId], references: [id], onDelete: SetNull)
+  originBrief   Brief?               @relation(fields: [originBriefId], references: [id], onDelete: SetNull)
   categoryId    String?
   category      OpportunityCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  ownerId       String    @default("me")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  ownerId       String               @default("me")
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -273,3 +276,126 @@ model Opportunity {
 // model Source       { id, kind, url, credentialsRef, schedule }// Slice 3
 // model EmailDraft   { id, opportunityId, clientId, body, status } // Slice 4
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Knowledge base — video research V1 (captions-first).
+// A KnowledgeSource is a video; each acquisition is an immutable SourceVersion
+// holding the FULL timestamped transcript. Analysis lives in revisions so a
+// re-run never destroys the evidence an approved Brief was based on.
+// ---------------------------------------------------------------------------
+
+model KnowledgeSource {
+  id               String          @id @default(cuid())
+  ownerId          String          @default("me")
+  kind             String          @default("youtube")
+  provider         String          @default("youtube")
+  externalId       String // the video id — identity, free of tracking params
+  canonicalUrl     String
+  title            String          @default("")
+  channel          String?
+  publishedAt      DateTime?
+  durationMs       Int?
+  language         String?
+  currentVersionId String? // the published version shown in the UI
+  createdAt        DateTime        @default(now())
+  versions         SourceVersion[]
+  jobs             ResearchJob[]
+  findings         Finding[]
+
+  @@unique([provider, externalId, ownerId])
+}
+
+model SourceVersion {
+  id               String              @id @default(cuid())
+  sourceId         String
+  source           KnowledgeSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  version          Int                 @default(1)
+  acquiredAt       DateTime            @default(now())
+  transcriptMethod String              @default("captions") // captions | manual_import
+  language         String?
+  coverageStatus   String              @default("complete") // complete | partial | none
+  limitations      String?
+  contentHash      String?
+  segments         TranscriptSegment[]
+  chunks           KnowledgeChunk[]
+  revisions        AnalysisRevision[]
+
+  @@unique([sourceId, version])
+}
+
+// One caption cue. Never truncated — the whole transcript is kept.
+model TranscriptSegment {
+  id              String        @id @default(cuid())
+  sourceVersionId String
+  sourceVersion   SourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Cascade)
+  ordinal         Int // cited as [s<ordinal>]
+  startMs         Int
+  endMs           Int
+  text            String
+
+  @@unique([sourceVersionId, ordinal])
+}
+
+// Retrieval-sized window over segments (search returns these, not raw cues).
+model KnowledgeChunk {
+  id                  String        @id @default(cuid())
+  sourceVersionId     String
+  sourceVersion       SourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Cascade)
+  ordinal             Int
+  text                String
+  startMs             Int
+  endMs               Int
+  segmentOrdinalsJson String        @default("[]")
+
+  @@unique([sourceVersionId, ordinal])
+}
+
+model AnalysisRevision {
+  id              String        @id @default(cuid())
+  sourceVersionId String
+  sourceVersion   SourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Cascade)
+  pipelineVersion String        @default("v1")
+  promptVersion   String        @default("v1")
+  modelConfigJson String        @default("{}")
+  status          String        @default("draft") // draft | published | failed
+  summaryJson     String? // validated JSON; points carry segment ordinals
+  coverageJson    String? // what was and wasn't covered
+  createdAt       DateTime      @default(now())
+}
+
+// A durable unit of background work owned by the local worker process.
+model ResearchJob {
+  id                String          @id @default(cuid())
+  sourceId          String
+  source            KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  kind              String          @default("video")
+  // queued | running | retry_wait | needs_input | succeeded | partial | failed | cancelled
+  state             String          @default("queued")
+  stage             String          @default("validate")
+  attempt           Int             @default(0)
+  leaseOwner        String?
+  leaseExpiresAt    DateTime?
+  heartbeatAt       DateTime?
+  cancelRequestedAt DateTime?
+  errorCode         String?
+  errorMessage      String?
+  budgetMicroUsd    Int             @default(1000000) // $1 default cap
+  spentMicroUsd     Int             @default(0)
+  createdAt         DateTime        @default(now())
+  finishedAt        DateTime?
+  calls             ModelCall[]
+}
+
+// Per-call spend, in micro-USD so small calls don't round to zero.
+model ModelCall {
+  id           String      @id @default(cuid())
+  jobId        String
+  job          ResearchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  stage        String
+  model        String
+  inputTokens  Int         @default(0)
+  outputTokens Int         @default(0)
+  costMicroUsd Int         @default(0)
+  status       String      @default("ok")
+  createdAt    DateTime    @default(now())
+}

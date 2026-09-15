@@ -20,7 +20,10 @@
     "doctor": "node scripts/doctor.mjs",
     "prerefresh:grounding": "node scripts/ensure-env.mjs",
     "refresh:grounding": "node scripts/refresh-grounding.mjs",
-    "update": "node scripts/update.mjs"
+    "update": "node scripts/update.mjs",
+    "preworker": "node scripts/ensure-env.mjs",
+    "worker": "tsx scripts/research-worker.ts",
+    "dev:all": "node scripts/dev-all.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

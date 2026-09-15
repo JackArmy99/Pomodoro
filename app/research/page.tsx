@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { hasApiKey } from "@/lib/anthropic";
-import { ingestPaste, ingestVideo, dismissFinding } from "@/app/actions/research";
+import { ingestPaste, dismissFinding } from "@/app/actions/research";
+import { submitVideo } from "@/app/actions/knowledge";
 import SubmitButton from "@/components/SubmitButton";
 import { isVerifiedCurrent } from "@/lib/research/revision";
 import {
@@ -184,10 +185,11 @@ export default async function ResearchInboxPage({
           </div>
         </form>
 
-        <form action={ingestVideo} className="card space-y-2">
+        <form action={submitVideo} className="card space-y-2">
           <h2 className="text-sm font-semibold text-slate-900">Add a video</h2>
           <p className="text-xs text-slate-500">
-            Paste a YouTube link — its captions are summarised into the inbox.
+            Paste a YouTube link. The full transcript is stored in Knowledge
+            and processed in the background.
           </p>
           <input
             name="url"
@@ -197,9 +199,7 @@ export default async function ResearchInboxPage({
             required
           />
           <div className="flex justify-end">
-            <SubmitButton pendingLabel="Fetching transcript…">
-              Add video
-            </SubmitButton>
+            <SubmitButton pendingLabel="Queueing…">Add video</SubmitButton>
           </div>
         </form>
       </section>

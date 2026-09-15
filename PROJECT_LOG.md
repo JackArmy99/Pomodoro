@@ -2,6 +2,37 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — Video research M1: durable captions-first ingestion
+
+First milestone of the YouTube Retriever. Pasting a link no longer fetches
+captions inside a server action, joins them into one string and truncates to
+8,000 characters — that path is deleted.
+
+- **Knowledge base schema**: `KnowledgeSource` / `SourceVersion` /
+  `TranscriptSegment` / `KnowledgeChunk` / `AnalysisRevision` / `ResearchJob` /
+  `ModelCall` (+ `Finding.knowledgeSourceId`, unique → one Finding per video).
+  The **full** timestamped transcript is stored; nothing is truncated.
+- **Durable worker** (`scripts/research-worker.ts`, `npm run worker`, or
+  `npm run dev:all` to run it beside the app). Atomic claim, renewable lease +
+  heartbeat, resume-from-stage, cancel. Verified: an orphaned job whose worker
+  "died" (expired lease) is reclaimed and finished by a live worker.
+- **Zero new dependencies**: `youtube-transcript` already returns per-cue
+  `offset`/`duration` and typed errors, so timestamps and failure classification
+  came free. No yt-dlp/ffmpeg/Python (deferred with the visual work to V1b).
+- **Idempotent submission**: 8 URL shapes (watch/youtu.be/Shorts/embed/bare id,
+  with tracking and `t=` params) collapse to one canonical source; playlists,
+  other hosts, malformed ids and embedded credentials are rejected. Verified.
+- **Honest failure reporting**, sharpened by a real bug found in testing: the
+  transcript library reports "video unavailable" both for a private/deleted
+  video and when it simply couldn't load the page, and a blocking proxy answers
+  with an HTTP error that looks like YouTube responding. Rather than guess, an
+  unconfirmed fetch now reports `video_or_network` and names both
+  possibilities. A queued job with no worker running says so explicitly.
+
+**Not verified here:** this container's egress blocks youtube.com, so real
+caption retrieval could not be exercised — only the surrounding machinery. That
+gate belongs on Jack's laptop.
+
 ## 2026-09 — Verification bound to a revision; approval made atomic
 
 Two defects found by the video-research brief's static review of this repo, both

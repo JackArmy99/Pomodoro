@@ -1,0 +1,42 @@
+// Plain-English labels for job state and acquisition failures. The user should
+// never see a raw code, and never "Nothing new" for a failed retrieval.
+export const JOB_STATE_LABELS: Record<string, string> = {
+  queued: "Queued",
+  running: "Processing…",
+  retry_wait: "Retrying…",
+  needs_input: "Needs your input",
+  succeeded: "Ready",
+  partial: "Partly done",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
+
+export const JOB_STATE_STYLES: Record<string, string> = {
+  queued: "border-slate-200 bg-slate-100 text-slate-600",
+  running: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  retry_wait: "border-amber-200 bg-amber-50 text-amber-800",
+  needs_input: "border-amber-200 bg-amber-50 text-amber-800",
+  succeeded: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  partial: "border-amber-200 bg-amber-50 text-amber-800",
+  failed: "border-rose-200 bg-rose-50 text-rose-700",
+  cancelled: "border-slate-200 bg-slate-100 text-slate-500",
+};
+
+export function errorAdvice(code: string | null, message: string | null): string {
+  switch (code) {
+    case "captions_disabled":
+      return "Captions are turned off for this video, so there's no transcript to read. Nothing was analysed.";
+    case "captions_not_available":
+      return "This video has no caption track. Automatic transcription isn't part of this version yet.";
+    case "video_unavailable":
+      return "The video is private, deleted or otherwise unavailable.";
+    case "rate_limited":
+      return "YouTube is rate-limiting this machine. Wait a few minutes and retry.";
+    case "video_or_network":
+      return "Couldn't load this video. It may be private or deleted — or this machine couldn't reach YouTube (proxy, VPN or no connection). Open the link in your browser to check, then retry.";
+    case "network_error":
+      return `Couldn't reach YouTube: ${message ?? "network error"}.`;
+    default:
+      return message ?? "Something went wrong.";
+  }
+}

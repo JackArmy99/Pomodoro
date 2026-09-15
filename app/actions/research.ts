@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { processFinding, deepenFinding } from "@/lib/research/fetch";
 import { CLEARS_VERIFICATION, isVerifiedCurrent } from "@/lib/research/revision";
-import { getYouTubeTranscript } from "@/lib/research/youtube";
 
 // ---- Manual quick-adds to the inbox --------------------------------------
 
@@ -22,40 +21,6 @@ export async function ingestPaste(formData: FormData) {
       rawContent: rawContent.slice(0, 8000),
       sourceUrl,
       sourceType: "paste",
-    },
-  });
-  await processFinding(finding.id);
-  revalidatePath("/research");
-}
-
-// Ingest a YouTube video via its captions.
-export async function ingestVideo(formData: FormData) {
-  const url = String(formData.get("url") ?? "").trim();
-  if (!url) return;
-  const existing = await prisma.finding.findUnique({ where: { externalId: url } });
-  if (existing) return;
-
-  const result = await getYouTubeTranscript(url);
-  if (!result) {
-    await prisma.finding.create({
-      data: {
-        title: "Video has no captions — needs audio transcription",
-        rawContent: `Couldn't get a transcript for ${url}. Once audio transcription (ASR) is set up, capture the audio and upload it.`,
-        sourceUrl: url,
-        sourceType: "video",
-      },
-    });
-    revalidatePath("/research");
-    return;
-  }
-
-  const finding = await prisma.finding.create({
-    data: {
-      title: result.title,
-      rawContent: result.text.slice(0, 8000),
-      sourceUrl: url,
-      sourceType: "video",
-      externalId: url,
     },
   });
   await processFinding(finding.id);
