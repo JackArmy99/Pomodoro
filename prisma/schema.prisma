@@ -36,11 +36,12 @@ model Client {
 
 // A Tagetik product/module in the catalogue (Consolidation, ETL, ESG, …).
 model Module {
-  id       String          @id @default(cuid())
-  name     String          @unique
-  clients  ClientModule[]
-  briefs   BriefModule[]
-  findings FindingModule[]
+  id          String          @id @default(cuid())
+  name        String          @unique
+  description String? // what this module does — grounds the agents' mapping
+  clients     ClientModule[]
+  briefs      BriefModule[]
+  findings    FindingModule[]
 }
 
 // A research source a source/agent monitors (an RSS/blog feed or web topic).
@@ -128,6 +129,9 @@ model Finding {
   aiProcessed     Boolean         @default(false)
   relevance       String          @default("medium") // high | medium | low
   relevanceReason String?
+  sourceBody      String? // issuing body/site: EFRAG, EIOPA, OECD, EUR-Lex, IASB…
+  effectiveDate   DateTime? // when this forces client work (drives the deadline)
+  verified        Boolean         @default(false) // a human confirmed the source before fan-out
   agentId         String? // which agent surfaced it (null = pasted / ad-hoc)
   agent           Agent?          @relation(fields: [agentId], references: [id], onDelete: SetNull)
   briefId         String? // set once approved into a Brief

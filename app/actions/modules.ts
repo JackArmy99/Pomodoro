@@ -41,6 +41,27 @@ export async function createModule(formData: FormData) {
   if (clientId) revalidatePath(`/clients/${clientId}`);
 }
 
+// Edit a module's description — grounds how the agents map findings to it.
+export async function setModuleDescription(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const description = String(formData.get("description") ?? "").trim() || null;
+  await prisma.module.update({ where: { id }, data: { description } });
+  revalidatePath("/modules");
+  revalidatePath(`/modules/${id}`);
+}
+
+// Edit the global product-context grounding injected into every research run.
+export async function setProductContext(formData: FormData) {
+  const value = String(formData.get("value") ?? "").trim();
+  await prisma.setting.upsert({
+    where: { key: "product_context" },
+    create: { key: "product_context", value },
+    update: { value },
+  });
+  revalidatePath("/modules");
+}
+
 export async function setClientHosting(formData: FormData) {
   const clientId = String(formData.get("clientId") ?? "");
   if (!clientId) return;

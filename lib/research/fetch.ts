@@ -105,6 +105,13 @@ export async function createWebFindings(
       .map((n) => byName.get(n.toLowerCase()))
       .filter((id): id is string => Boolean(id));
 
+    // Parse the model's ISO effective-date defensively; ignore if unparseable.
+    let effectiveDate: Date | null = null;
+    if (item.effectiveDate) {
+      const d = new Date(item.effectiveDate);
+      if (!Number.isNaN(d.getTime())) effectiveDate = d;
+    }
+
     await prisma.finding.create({
       data: {
         title: item.title,
@@ -116,6 +123,8 @@ export async function createWebFindings(
         aiProcessed: true,
         relevance: item.relevance,
         relevanceReason: item.relevanceReason,
+        sourceBody: item.sourceBody || null,
+        effectiveDate,
         agentId: agentId ?? null,
         modules: { create: moduleIds.map((moduleId) => ({ moduleId })) },
       },

@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { hasApiKey, resolveRunModel } from "@/lib/anthropic";
+import { hasApiKey, resolveRunModel, buildGroundingBlock } from "@/lib/anthropic";
 
 export type WebItem = {
   title: string;
@@ -8,6 +8,8 @@ export type WebItem = {
   modules: string[];
   relevance: "high" | "medium" | "low";
   relevanceReason: string;
+  sourceBody: string; // issuing body/site, e.g. EFRAG, EIOPA, OECD, EUR-Lex
+  effectiveDate: string | null; // ISO date this forces client work, or null
 };
 
 export type WebResult = {
@@ -110,6 +112,7 @@ export async function runWebResearch(input: {
 
   const client = new Anthropic();
   const { model, maxSearches } = await resolveRunModel();
+  const grounding = await buildGroundingBlock();
   // In test mode the search cap also caps how many items we ask for, so a cheap
   // run stays cheap end to end.
   const max = Math.min(input.maxItems ?? 6, maxSearches * 3);
@@ -118,17 +121,26 @@ export async function runWebResearch(input: {
     ? `\n\nStanding instructions from the firm (follow closely):\n${input.instructions.trim()}`
     : "";
 
-  // Stable system prefix (same across agents/runs) → cached to cut cost.
+  // Stable system prefix (same across agents/runs) → cached to cut cost. The
+  // grounding block is what stops the model guessing the module mapping.
   const stableSystem =
     "You are a research agent for an EPM (CCH Tagetik) consultancy. Use web " +
-    "search to find the most relevant recent items about the given topic. " +
+    "search to find the most relevant recent items about the given topic.\n\n" +
+    (grounding ? `${grounding}\n\n` : "") +
     "Return ONLY valid JSON: an array of objects of the form " +
     '{"title": string, "url": string, "summary": string, "modules": string[], ' +
-    '"relevance": "high"|"medium"|"low", "relevanceReason": string}. ' +
+    '"relevance": "high"|"medium"|"low", "relevanceReason": string, ' +
+    '"sourceBody": string, "effectiveDate": string|null}. ' +
     "summary is 2-3 sentences on what it is and why it matters to clients. " +
     "relevance reflects how important this is for the firm to act on, with a " +
-    "one-line reason. modules must be chosen only from this list: " +
-    `${input.moduleNames.join(", ")}.`;
+    "one-line reason. modules: choose only genuinely, specifically relevant " +
+    "ones from the list above; if none clearly applies, return an empty array " +
+    "(a general EPM item with no module is expected and useful — never force a " +
+    "weak match). sourceBody is the issuing body or site (e.g. EFRAG, EIOPA, " +
+    "OECD, EUR-Lex, IASB, European Commission, ESMA, DNB, or the publisher). " +
+    "effectiveDate is the ISO date (YYYY-MM-DD) this forces client work if the " +
+    "item states one, else null. Always include the real source url; never " +
+    "assert a specific date or figure without one.";
 
   // Per-run details go in the user message so the system prefix stays cacheable.
   // The final line lands *after* any tool use — where a weaker model most needs
@@ -175,6 +187,12 @@ export async function runWebResearch(input: {
       relevance: normaliseRelevance(x.relevance),
       relevanceReason:
         typeof x.relevanceReason === "string" ? x.relevanceReason : "",
+      sourceBody:
+        typeof x.sourceBody === "string" ? x.sourceBody.slice(0, 80) : "",
+      effectiveDate:
+        typeof x.effectiveDate === "string" && x.effectiveDate.trim()
+          ? x.effectiveDate.trim()
+          : null,
     }))
     .slice(0, max);
 

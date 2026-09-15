@@ -33,6 +33,29 @@ export async function resolveRunModel(): Promise<{
     : { model: FULL_MODEL, maxSearches: 5 };
 }
 
+// Domain grounding shared by every run: the editable product-context blurb plus
+// each module and what it does. This is what stops the agents guessing the
+// module mapping from bare names. Stable → lives in the cached system prefix.
+export async function buildGroundingBlock(): Promise<string> {
+  const [ctx, modules] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: "product_context" } }),
+    prisma.module.findMany({
+      select: { name: true, description: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
+  const parts: string[] = [];
+  if (ctx?.value?.trim()) parts.push(ctx.value.trim());
+  if (modules.length) {
+    const lines = modules.map((m) =>
+      m.description?.trim() ? `- ${m.name} — ${m.description.trim()}` : `- ${m.name}`,
+    );
+    parts.push("Our licensed modules (map findings to these):\n" + lines.join("\n"));
+  }
+  return parts.join("\n\n");
+}
+
 export type Summary = {
   summary: string;
   suggestedModules: string[];
@@ -52,24 +75,25 @@ export async function summariseItem(input: {
 
   const client = new Anthropic();
   const { model } = await resolveRunModel();
-  const moduleList = input.moduleNames.join(", ");
+  const grounding = await buildGroundingBlock();
 
   const steer = input.instructions?.trim()
     ? `\n\nStanding instructions from the firm (follow these closely):\n${input.instructions.trim()}`
     : "";
 
   const system =
-    "You help an EPM (CCH Tagetik) consultancy triage vendor news. " +
+    "You help an EPM (CCH Tagetik) consultancy triage news. " +
+    (grounding ? `\n\n${grounding}\n\n` : "") +
     "Given a news/article item, write a tight 2-3 sentence summary focused on " +
-    "what changed and why it matters to clients, pick which of the firm's " +
-    "modules it relates to (only from the provided list), and score how " +
-    "important it is for the firm to act on. " +
+    "what changed and why it matters to clients, pick which module(s) it " +
+    "relates to (only from the list above; return an empty array if none " +
+    "clearly applies — do not force a weak match), and score how important it " +
+    "is for the firm to act on. " +
     'Respond with ONLY valid JSON: {"summary": string, "modules": string[], ' +
     '"relevance": "high"|"medium"|"low", "relevanceReason": string}.' +
     steer;
 
   const user =
-    `Firm's modules: ${moduleList}\n\n` +
     `Title: ${input.title}\n\n` +
     `Content:\n${input.content.slice(0, 8000)}`;
 

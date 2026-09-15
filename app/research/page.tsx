@@ -97,6 +97,21 @@ export default async function ResearchInboxPage({
                 <span className="chip border-slate-200 bg-slate-50 text-slate-600">
                   {f.agent ? f.agent.name : "Manual"}
                 </span>
+                {f.sourceBody && (
+                  <span className="chip border-indigo-200 bg-indigo-50 text-indigo-700">
+                    {f.sourceBody}
+                  </span>
+                )}
+                {f.effectiveDate && (
+                  <span className="chip border-amber-200 bg-amber-50 text-amber-800">
+                    Effective {formatDate(f.effectiveDate)}
+                  </span>
+                )}
+                {!f.verified && (
+                  <span className="chip border-slate-200 bg-slate-100 text-slate-500">
+                    Unverified
+                  </span>
+                )}
                 <span className="text-xs text-slate-400">
                   {formatDate(f.publishedAt ?? f.createdAt)}
                 </span>

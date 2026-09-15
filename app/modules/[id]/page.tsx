@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import ClientBadge from "@/components/ClientBadge";
+import { setModuleDescription } from "@/app/actions/modules";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,30 @@ export default async function ModuleDetailPage({
           Clients affected by anything relating to this module.
         </p>
       </header>
+
+      {/* Description — grounds how the agents map findings to this module. */}
+      <form action={setModuleDescription} className="card space-y-2">
+        <input type="hidden" name="id" value={mod.id} />
+        <label className="label" htmlFor="description">
+          What this module does{" "}
+          <span className="font-normal text-slate-400">
+            (helps the agents map findings correctly)
+          </span>
+        </label>
+        <textarea
+          id="description"
+          name="description"
+          rows={2}
+          defaultValue={mod.description ?? ""}
+          placeholder="e.g. Statutory and management consolidation: group close, intercompany, currency."
+          className="field"
+        />
+        <div className="flex justify-end">
+          <button type="submit" className="btn-ghost">
+            Save description
+          </button>
+        </div>
+      </form>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-emerald-700">

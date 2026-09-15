@@ -7,6 +7,7 @@ import {
   dismissFinding,
   finalizeApprove,
   summariseFinding,
+  setFindingVerified,
 } from "@/app/actions/research";
 import SubmitButton from "@/components/SubmitButton";
 import {
@@ -20,8 +21,10 @@ export const dynamic = "force-dynamic";
 
 export default async function FindingDetailPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams: { error?: string };
 }) {
   const finding = await prisma.finding.findUnique({
     where: { id: params.id },
@@ -91,6 +94,25 @@ export default async function FindingDetailPage({
           <span className="chip border-slate-200 bg-slate-50 text-slate-600">
             {finding.agent ? finding.agent.name : "Manual"}
           </span>
+          {finding.sourceBody && (
+            <span className="chip border-indigo-200 bg-indigo-50 text-indigo-700">
+              {finding.sourceBody}
+            </span>
+          )}
+          {finding.effectiveDate && (
+            <span className="chip border-amber-200 bg-amber-50 text-amber-800">
+              Effective {formatDate(finding.effectiveDate)}
+            </span>
+          )}
+          <span
+            className={`chip ${
+              finding.verified
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-slate-200 bg-slate-100 text-slate-500"
+            }`}
+          >
+            {finding.verified ? "Verified" : "Unverified"}
+          </span>
           <span className="text-xs text-slate-400">
             {formatDate(finding.publishedAt ?? finding.createdAt)}
           </span>
@@ -107,6 +129,30 @@ export default async function FindingDetailPage({
           </a>
         )}
       </header>
+
+      {/* Verify the source before it can create client opportunities. */}
+      <form
+        action={setFindingVerified}
+        className="card flex flex-wrap items-center justify-between gap-2"
+      >
+        <input type="hidden" name="id" value={finding.id} />
+        <input
+          type="hidden"
+          name="verified"
+          value={finding.verified ? "false" : "true"}
+        />
+        <p className="text-xs text-slate-500">
+          {finding.verified
+            ? "Source verified — this can fan out to client opportunities."
+            : "Check the source link is real and the facts/dates are right, then mark verified. Required before approving to clients."}
+        </p>
+        <button
+          type="submit"
+          className={finding.verified ? "btn-ghost" : "btn"}
+        >
+          {finding.verified ? "Mark unverified" : "Mark source verified"}
+        </button>
+      </form>
 
       {/* Edit */}
       <form action={updateFinding} className="card space-y-3">
@@ -206,6 +252,18 @@ export default async function FindingDetailPage({
           also create an item for each (default: Opportunity).
         </p>
 
+        {searchParams.error === "verify" && (
+          <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            Mark the source verified above before approving to clients.
+          </p>
+        )}
+        {!finding.verified && (
+          <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            This finding is <strong>unverified</strong> — verify the source above
+            to enable approval.
+          </p>
+        )}
+
         {moduleIds.length === 0 ? (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
             No modules tagged yet — add some above and save, then affected
@@ -251,7 +309,14 @@ export default async function FindingDetailPage({
         )}
 
         <div className="flex justify-end">
-          <button type="submit" className="btn">
+          <button
+            type="submit"
+            className="btn"
+            disabled={!finding.verified}
+            title={
+              finding.verified ? undefined : "Verify the source first"
+            }
+          >
             Approve
           </button>
         </div>

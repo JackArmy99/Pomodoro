@@ -106,6 +106,18 @@ export async function updateFinding(formData: FormData) {
   revalidatePath(`/research/${id}`);
 }
 
+// Mark a finding's source as human-verified (or clear it). Fan-out to client
+// opportunities is gated on this — a defence against confident but wrong AI
+// specifics reaching a client.
+export async function setFindingVerified(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const verified = String(formData.get("verified") ?? "") === "true";
+  await prisma.finding.update({ where: { id }, data: { verified } });
+  revalidatePath("/research");
+  revalidatePath(`/research/${id}`);
+}
+
 // Dig deeper — send the agent back to research the topic more, optionally
 // steered by a note, and enrich this same finding's summary in place.
 export async function digDeeper(formData: FormData) {
@@ -129,6 +141,11 @@ export async function finalizeApprove(formData: FormData) {
     include: { modules: true },
   });
   if (!finding) return;
+
+  // Accuracy gate: don't let unverified AI specifics fan out to clients.
+  if (!finding.verified) {
+    redirect(`/research/${id}?error=verify`);
+  }
 
   const brief = await prisma.brief.create({
     data: {
@@ -163,6 +180,7 @@ export async function finalizeApprove(formData: FormData) {
           description: finding.summary,
           clientId,
           stage: "open",
+          deadline: finding.effectiveDate,
           originBriefId: brief.id,
         },
       });
@@ -173,6 +191,7 @@ export async function finalizeApprove(formData: FormData) {
           notes: finding.summary,
           clientId,
           urgency: finding.relevance === "high" ? "high" : "normal",
+          dueDate: finding.effectiveDate,
         },
       });
     }

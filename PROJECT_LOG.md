@@ -2,6 +2,32 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — Domain grounding + regulatory beats + verify/deadline
+
+The live Finder found real market news but mapped it to the wrong modules
+(guessing from bare names) and drifted broad. User reviewed a regulatory context
+pack; decisions folded in.
+
+- **Grounding:** `Module.description` + editable `Setting` `product_context`,
+  injected into every run via `buildGroundingBlock()`. Findings may now map to
+  **no** module (general EPM intel) instead of a forced wrong tag. Edited on
+  `/modules`.
+- **Two seeded beats** (user's model, not the pack's 5): **Regulation &
+  Standards** — domain-locked to the authoritative hosts (IFRS/EFRAG/EIOPA/OECD/
+  EC/ESMA/DNB), with one pinned web source per domain for depth in a single
+  agent; **Module Opportunities** — broad, grounded by module descriptions.
+  Vendor beat dropped (user builds a Tagetik-site agent separately).
+- **Provenance + honesty:** every finding carries `sourceBody` (issuing body) and
+  a required source url; the pack's own hyper-specific citations are treated as
+  unverified. A **`verified` gate** blocks fan-out to client opportunities until
+  a human confirms the source.
+- **Deadlines:** `Finding.effectiveDate` captured from the item and carried into
+  `Opportunity.deadline` / `Task.dueDate` — the FY2027 wave becomes dated
+  pipeline.
+- **Honest scope call:** stayed on domain-locked web_search (not true page-diff
+  monitoring). The pack wants "what changed on EFRAG this week"; that needs a
+  web_fetch + snapshot Comparer, deferred by user choice.
+
 ## 2026-09 — "Nothing new" root-caused + made self-diagnosing
 
 A briefing that produced a rich digest in Claude chat returned "Nothing new" in

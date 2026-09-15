@@ -54,7 +54,11 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 - **Agent** (research agent: archetype finder|retriever|comparer, briefing,
   guardrails, lookbackDays) → **AgentRun** (run history + est cost).
 - **Finding** (research inbox item: relevance high/medium/low, agentId,
-  sourceType, status pending/approved/dismissed) ↔ **FindingModule**.
+  sourceType, status pending/approved/dismissed; **sourceBody** issuing body,
+  **effectiveDate** deadline, **verified** gate) ↔ **FindingModule**.
+- **Module.description** + `Setting` **product_context** = the domain grounding
+  injected into every run (`buildGroundingBlock()` in `lib/anthropic.ts`); edited
+  on `/modules`. Findings may map to **no** module (general EPM intel).
 - **Source** (rss feed | web topic, optionally pinned to an agent),
   **ResearchBrief** (a PDF/Word/typed brief attached to an agent — researched
   as its own topic on every run, or on demand), **Setting** (key/value).
@@ -62,7 +66,10 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 ## Screens (app/)
 
 - `/` Hub — personal tasks bucketed day/week/month + secondary opps/briefs.
-- `/agents`, `/agents/[id]` — research agent overview + briefing page.
+- `/agents`, `/agents/[id]` — research agent overview + briefing page. Seeded
+  with two beats: **Regulation & Standards** (domain-locked to IFRS/EFRAG/EIOPA/
+  OECD/EC/ESMA hosts, one pinned source per domain) and **Module Opportunities**
+  (broad, grounded by module descriptions).
 - `/research`, `/research/[id]` — inbox + finding detail (edit / dig deeper /
   approve fan-out).
 - `/briefs`, `/briefs/[id]` — briefs + "who's affected".
@@ -84,9 +91,11 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 - `youtube.ts` (captions), `extract.ts` (PDF/Word text).
 - `lib/anthropic.ts` `summariseItem` (summary + modules + relevance).
 
-Flow: **agent runs → findings (scored, tagged) → inbox → review/edit/dig-deeper
-→ approve → Brief + fan-out to clients holding the tagged module (Opportunity/
-Task/Brief each)**.
+Flow: **agent runs → findings (scored, module+body tagged, dated) → inbox →
+review/edit/dig-deeper → verify source → approve → Brief + fan-out to clients
+holding the tagged module (Opportunity/Task/Brief each; effectiveDate →
+deadline/dueDate)**. Approval is **gated on `verified`** — a guard against
+confident-but-wrong AI specifics reaching a client.
 
 ## Conventions
 
