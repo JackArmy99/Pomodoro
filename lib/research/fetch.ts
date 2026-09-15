@@ -224,13 +224,19 @@ export async function runFinderAgent(agent: AgentCtx): Promise<RunTally> {
     total.low += t.low;
   };
 
-  // 1) The briefing IS the research topic (falling back to mission/name).
-  const briefingTopic = (
-    agent.briefing?.trim() ||
-    agent.mission?.trim() ||
-    agent.name
-  ).slice(0, 1500);
-  await doWeb(briefingTopic, { withBriefing: false });
+  // 1) The briefing IS the research topic — but ONLY when there are no pinned
+  //    web sources. If the agent has web topics, those are its searches (steered
+  //    by the briefing); an extra broad search on the briefing text is slow and
+  //    low-quality, and adds a whole web call to every run.
+  const hasWebSources = sources.some((s) => s.type === "web");
+  if (!hasWebSources) {
+    const briefingTopic = (
+      agent.briefing?.trim() ||
+      agent.mission?.trim() ||
+      agent.name
+    ).slice(0, 1500);
+    await doWeb(briefingTopic, { withBriefing: false });
+  }
 
   // 2) Any pinned sources: web topics search their query; rss feeds are fetched.
   for (const s of sources) {

@@ -72,7 +72,7 @@ async function createWithSearch(
       // plus the paused assistant turn — the server picks up where it left off.
       // Without this, the model never emits its final JSON answer → 0 items.
       let guard = 0;
-      while (response.stop_reason === "pause_turn" && guard < 4) {
+      while (response.stop_reason === "pause_turn" && guard < 2) {
         messages = [...messages, { role: "assistant", content: response.content }];
         response = await client.messages.create({ ...base, messages });
         guard += 1;
