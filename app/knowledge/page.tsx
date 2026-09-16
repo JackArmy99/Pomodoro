@@ -54,9 +54,9 @@ export default async function KnowledgePage({
       {anyPending && !workerAlive && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
           <strong>The research worker isn&apos;t running.</strong> Jobs will sit
-          queued until you start it. Open a second terminal in the project folder
-          and run <code>npm run worker</code> — or use{" "}
-          <code>npm run dev:all</code> next time to start both together.
+          queued until it starts. Stop the app and run <code>npm run dev</code>,
+          which starts the worker alongside it. (If you started with{" "}
+          <code>npm run dev:app</code>, that one runs the app only.)
         </div>
       )}
 

@@ -153,7 +153,7 @@ export default async function KnowledgeSourcePage({
       {pending && !workerAlive && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
           <strong>Waiting on the research worker, which isn&apos;t running.</strong>{" "}
-          Start it in a second terminal with <code>npm run worker</code>.
+          Stop the app and run <code>npm run dev</code> — it starts both.
         </div>
       )}
 

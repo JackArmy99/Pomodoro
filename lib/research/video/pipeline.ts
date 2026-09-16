@@ -301,7 +301,13 @@ async function summariseVersion(
   if (!result.ok) {
     // A missing key or a rate limit is the user's to resolve; the evidence is
     // already safe, so this is "needs input", not a dead end.
-    const recoverable = ["no_api_key", "rate_limited", "bad_json", "no_valid_points"];
+    const recoverable = [
+      "no_api_key",
+      "rate_limited",
+      "bad_json",
+      "no_valid_points",
+      "truncated",
+    ];
     await prisma.analysisRevision.create({
       data: {
         sourceVersionId: versionId,

@@ -34,12 +34,12 @@ no real client names/PII in the app.
 ```bash
 npm install
 npm run setup     # first time: generate + migrate + seed
-npm run dev       # http://localhost:3000
+npm run dev       # http://localhost:3000 — starts the research worker too
+npm run dev:app   # the web app on its own (no worker)
 npm run update    # pull latest + install + migrate (keeps data); then npm run dev
 npm run backup    # timestamped copy of prisma/dev.db
 npm run doctor    # diagnose the AI path: key → Claude call → live web search
 npm run db:check  # verify stored values still match the schema
-npm run dev:all   # app + research worker together (videos need the worker)
 npm run test:video # free, no-API gate for the video pipeline
 ```
 Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
@@ -129,7 +129,7 @@ confident-but-wrong AI specifics reaching a client.
   rename over a file the calling process holds open → `EPERM`, every time,
   whatever else is closed. Anything touching the database inside a script that
   also generates (e.g. `fix-migrations`) runs as a **child process**.
-- **Stop the app before `npm run update`** — a live `npm run dev` / `dev:all` /
+- **Stop the app before `npm run update`** — a live `npm run dev` / `dev:app` /
   `worker` / `prisma studio` holds the same DLL. The updater refuses to start if
   anything answers on port 3000, retries a locked `generate` twice, and explains
   the lock in plain English. Prisma stays pinned at **5.22** — the advertised
@@ -143,8 +143,9 @@ confident-but-wrong AI specifics reaching a client.
   copies no rows — so run **`npm run db:check`** (also the last step of
   `npm run doctor`) after any migration that rebuilds a table. It compares every
   Int/Boolean/DateTime column against what's actually stored.
-- **Videos need the worker running** (`npm run dev:all`, or `npm run worker` in a
-  second terminal). Stages: `metadata → captions → store → summarise → finding →
+- **`npm run dev` starts the app AND the worker** (via `scripts/dev-all.mjs`,
+  which spawns `dev:app` — never `dev`, or it recurses). Videos do nothing
+  without the worker, so it is no longer something to remember. Stages: `metadata → captions → store → summarise → finding →
   published`. A job enqueued at `summarise` re-analyses a stored transcript
   **without re-fetching it** — `done(stage)` means that stage *finished*, so the
   fetch half is gated on `done("store")`, not `done("summarise")`.

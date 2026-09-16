@@ -69,10 +69,14 @@ export type Segment = { ordinal: number; startMs: number; text: string };
 // call and nothing is lost to stitching. Only genuinely long videos split.
 const CHARS_PER_PASS = 120_000;
 
-// Detailed notes on a long webinar are long. Too small a cap truncates the JSON
-// mid-object, which then looks like a malformed reply rather than a length
-// problem — so the cap is generous and truncation is reported by name.
-const MAX_TOKENS = 8000;
+// Detailed notes on a long webinar are long, and 8000 tokens truncated a
+// 26-minute video's notes mid-object. Haiku's output ceiling is lower than
+// Sonnet's, so the cap is per-model and every call streams — streaming is what
+// makes a large cap safe, since a big non-streaming reply can outlive the
+// HTTP timeout.
+function maxTokensFor(model: string): number {
+  return model.includes("haiku") ? 16000 : 32000;
+}
 
 const EXTRACT_SCHEMA = `{
   "overview": string,          // 3-5 sentences: what this video covers and teaches
@@ -202,6 +206,15 @@ export function splitIntoPasses(segments: Segment[]): Segment[][] {
   return passes;
 }
 
+// Split into a fixed number of parts. Used when the notes themselves were too
+// long for one reply: fewer segments per call means a smaller reply per call.
+function splitIntoParts(segments: Segment[], parts: number): Segment[][] {
+  const size = Math.ceil(segments.length / parts);
+  const out: Segment[][] = [];
+  for (let i = 0; i < segments.length; i += size) out.push(segments.slice(i, i + size));
+  return out;
+}
+
 function ordinalsOf(raw: any): number[] {
   return Array.isArray(raw?.segmentOrdinals)
     ? raw.segmentOrdinals.map(Number).filter(Number.isInteger)
@@ -312,52 +325,53 @@ export async function summariseTranscript(input: {
     (input.channel ? `\nChannel: ${input.channel}` : "");
 
   async function ask(stage: string, system: string, prompt: string): Promise<any> {
-    const response = await client.messages.create({
+    const stream = client.messages.stream({
       model,
-      max_tokens: MAX_TOKENS,
+      max_tokens: maxTokensFor(model),
       system,
       messages: [{ role: "user", content: prompt }],
     });
+    const response = await stream.finalMessage();
     usage.push(usageOf(stage, model, response));
     if (response.stop_reason === "max_tokens") throw new Truncated();
     return parseJsonObject(textOf(response));
   }
 
-  const passes = splitIntoPasses(input.segments);
+  let passes = splitIntoPasses(input.segments);
   let summary: VideoSummary;
   let repaired = false;
 
-  try {
-    // ---- Pass A: extract, ungrounded ---------------------------------------
-    if (passes.length === 1) {
-      summary = coerceSummary(
+  // ---- Pass A: extract, ungrounded -----------------------------------------
+  async function extract(chunks: Segment[][]): Promise<VideoSummary> {
+    if (chunks.length === 1) {
+      return coerceSummary(
         await ask(
           "summarise",
           EXTRACT_SYSTEM,
-          `${header}\n\nTranscript:\n${renderSegments(passes[0])}`,
+          `${header}\n\nTranscript:\n${renderSegments(chunks[0])}`,
         ),
       );
     } else {
       // Long video: notes per section, then merge. Section notes keep their own
       // citations, so the merged points stay traceable.
       const sections: VideoSummary[] = [];
-      for (const [i, pass] of passes.entries()) {
+      for (const [i, pass] of chunks.entries()) {
         sections.push(
           coerceSummary(
             await ask(
               "summarise",
               EXTRACT_SYSTEM,
-              `${header}\n\nThis is part ${i + 1} of ${passes.length} of the transcript. ` +
+              `${header}\n\nThis is part ${i + 1} of ${chunks.length} of the transcript. ` +
                 `Take notes on THIS part only, keeping the [sN] citations.\n\n${renderSegments(pass)}`,
             ),
           ),
         );
       }
-      summary = coerceSummary(
+      return coerceSummary(
         await ask(
           "synthesise",
           EXTRACT_SYSTEM,
-          `${header}\n\nBelow are notes on ${passes.length} consecutive parts of one video, ` +
+          `${header}\n\nBelow are notes on ${chunks.length} consecutive parts of one video, ` +
             "each with its own citations. Merge them into ONE set of notes for the whole video. " +
             "KEEP EVERY DISTINCT POINT — merge only genuine duplicates, and never drop a point " +
             "for being minor. Keep the video's order, and keep every segmentOrdinals value " +
@@ -365,6 +379,19 @@ export async function summariseTranscript(input: {
             JSON.stringify(sections),
         ),
       );
+    }
+  }
+
+  try {
+    try {
+      summary = await extract(passes);
+    } catch (err) {
+      if (!(err instanceof Truncated)) throw err;
+      // The notes were too long for one reply, not the transcript too long for
+      // the context. Splitting the video into more parts makes each reply
+      // smaller without dropping anything.
+      passes = splitIntoParts(input.segments, Math.max(3, passes.length * 3));
+      summary = await extract(passes);
     }
 
     let checked = enforceCitations(summary, valid);

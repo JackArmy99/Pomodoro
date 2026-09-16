@@ -1,7 +1,8 @@
 // Beacon research worker — owns long-running video jobs.
 //
 // Runs as its own process so a job survives the browser, a page navigation and
-// a dev-server reload. Start it with:  npm run worker   (or npm run dev:all)
+// a dev-server reload. `npm run dev` starts it automatically alongside the
+// app; `npm run worker` runs it on its own.
 //
 // Safety properties:
 //  - a job is claimed atomically, so two workers can't both run the same one

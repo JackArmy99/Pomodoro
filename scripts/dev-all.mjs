@@ -1,4 +1,5 @@
-// Run the app and the research worker together: npm run dev:all
+// Run the app and the research worker together — this IS `npm run dev`.
+// It starts `dev:app` (the bare Next server), never `dev`, which would recurse.
 // (Zero dependencies — just two child processes sharing this terminal.)
 import { spawn } from "node:child_process";
 
@@ -24,5 +25,5 @@ function stopAll() {
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { stopAll(); process.exit(0); });
 
 console.log("Starting Beacon (app + research worker)…\n");
-start("app", "dev");
+start("app", "dev:app");
 start("worker", "worker");
