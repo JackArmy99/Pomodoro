@@ -81,11 +81,23 @@ export async function cancelJob(jobId: string): Promise<void> {
 
 // Is a worker alive? Used to warn instead of leaving a job silently queued.
 export async function workerLooksAlive(): Promise<boolean> {
-  const recent = await prisma.researchJob.findFirst({
-    where: { heartbeatAt: { gt: new Date(Date.now() - WORKER_STALE_MS) } },
-    select: { id: true },
-  });
-  return Boolean(recent);
+  const cutoff = new Date(Date.now() - WORKER_STALE_MS);
+
+  // Two signals: a job being actively worked on, or the idle poll. Without the
+  // second, a worker that is running but has nothing to do reads as "not
+  // running" — which is both wrong and the state it spends most time in.
+  const [busy, idle] = await Promise.all([
+    prisma.researchJob.findFirst({
+      where: { heartbeatAt: { gt: cutoff } },
+      select: { id: true },
+    }),
+    prisma.setting.findUnique({ where: { key: "worker_heartbeat" } }),
+  ]);
+
+  if (busy) return true;
+  if (!idle?.value) return false;
+  const beat = new Date(idle.value);
+  return !Number.isNaN(beat.getTime()) && beat > cutoff;
 }
 
 // Re-analyse a video we already hold, without re-fetching captions. The job

@@ -71,9 +71,25 @@ function startHeartbeat(jobId: string) {
   }, HEARTBEAT_MS);
 }
 
+// A worker with no job to do still exists, holds the database engine open, and
+// is the thing the UI means by "the worker is running". Per-job heartbeats only
+// covered the busy case, so an idle worker looked identical to no worker at all.
+async function beatIdle() {
+  try {
+    await prisma.setting.upsert({
+      where: { key: "worker_heartbeat" },
+      create: { key: "worker_heartbeat", value: new Date().toISOString() },
+      update: { value: new Date().toISOString() },
+    });
+  } catch {
+    // a heartbeat failure must never stop the worker doing real work
+  }
+}
+
 async function main() {
   console.log(`[worker ${WORKER_ID}] ready — polling for video jobs`);
   while (!shuttingDown) {
+    await beatIdle();
     let job: Awaited<ReturnType<typeof claimJob>> = null;
     try {
       job = await claimJob();

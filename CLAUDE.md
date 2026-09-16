@@ -40,6 +40,7 @@ npm run update    # pull latest + install + migrate (keeps data); then npm run d
 npm run backup    # timestamped copy of prisma/dev.db
 npm run doctor    # diagnose the AI path: key → Claude call → live web search
 npm run db:check  # verify stored values still match the schema
+npm run stop      # kill anything Beacon left running (frees the engine file)
 npm run test:video # free, no-API gate for the video pipeline
 ```
 Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
@@ -130,7 +131,16 @@ confident-but-wrong AI specifics reaching a client.
   whatever else is closed. Anything touching the database inside a script that
   also generates (e.g. `fix-migrations`) runs as a **child process**.
 - **Stop the app before `npm run update`** — a live `npm run dev` / `dev:app` /
-  `worker` / `prisma studio` holds the same DLL. The updater refuses to start if
+  `worker` / `prisma studio` holds the same DLL. `npm run stop` clears strays.
+  The updater no longer guesses *who* holds it: it opens the engine file for
+  writing and reports the lock, because the culprit has twice been something
+  with no port to probe (once the updater itself, once an orphaned worker).
+- **`dev-all.mjs` must kill the process GROUP, not the child.** `npm run x` is
+  npm → node; killing npm leaves node orphaned, still holding the engine, and
+  the next `npm run update` fails with an EPERM that traces back to nothing.
+  Children are spawned `detached` and stopped with `process.kill(-pid)` (POSIX)
+  or `taskkill /T /F` (Windows). Same reason `scripts/stop.mjs` matches
+  `next-server`, not just `next dev` — Next renames its own process. The updater refuses to start if
   anything answers on port 3000, retries a locked `generate` twice, and explains
   the lock in plain English. Prisma stays pinned at **5.22** — the advertised
   8.x is a major release candidate; don't take the upgrade prompt.

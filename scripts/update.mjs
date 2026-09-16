@@ -16,7 +16,14 @@
 // shipped in the same commit silently failed to run. Re-running the post-pull
 // half as a fresh child process is the fix: the child loads the new file.
 import { execSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+} from "node:fs";
 import { createConnection } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -72,6 +79,29 @@ async function runWithRetry(cmd, { attempts = 3, delayMs = 2000 } = {}) {
   }
 }
 
+// Is the Prisma query engine locked by a running process?
+//
+// Guessing WHICH program holds it has failed twice — first this updater itself,
+// then an orphaned worker, which listens on no port and so was invisible to the
+// check below. So test the actual condition instead: try to open the engine for
+// writing. On Windows a loaded DLL is mapped without write sharing, so this
+// throws EPERM/EBUSY; on macOS/Linux it succeeds and the check is a silent
+// no-op. Deliberately non-destructive — no rename, so a failed test can never
+// leave the engine under the wrong name.
+function lockedEngine() {
+  const dir = join(root, "node_modules", ".prisma", "client");
+  if (!existsSync(dir)) return null;
+  for (const name of readdirSync(dir)) {
+    if (!/query_engine.*\.node$/.test(name)) continue;
+    try {
+      closeSync(openSync(join(dir, name), "r+"));
+    } catch (err) {
+      if (isFileLock(err)) return name;
+    }
+  }
+  return null;
+}
+
 // Is something answering on the dev-server port? Cheap, zero-dependency probe.
 function somethingOnPort(port, timeoutMs = 300) {
   return new Promise((resolve) => {
@@ -112,14 +142,28 @@ try {
   } else {
     // 0. Refuse to start while Beacon is running — otherwise the update does all
     //    its work and then falls over on the very last step.
-    if (!process.argv.includes("--force") && (await somethingOnPort(3000))) {
-      console.error(
-        "\n⚠️  Beacon looks like it's still running on http://localhost:3000.\n" +
-          "\nWindows won't let us replace files that a running app has open, so the\n" +
-          "update would fail at the end. Press Ctrl+C in that window (or close it),\n" +
-          "then run:  npm run update\n",
-      );
-      process.exit(1);
+    if (!process.argv.includes("--force")) {
+      if (await somethingOnPort(3000)) {
+        console.error(
+          "\n⚠️  Beacon looks like it's still running on http://localhost:3000.\n" +
+            "\nWindows won't let us replace files that a running app has open, so the\n" +
+            "update would fail at the end. Press Ctrl+C in that window (or close it),\n" +
+            "then run:  npm run update\n",
+        );
+        process.exit(1);
+      }
+      // The app can be closed and the background worker still running: it holds
+      // the same file and answers on no port, so only the file itself can tell.
+      if (lockedEngine()) {
+        console.error(
+          "\n⚠️  Something is still using Beacon's database engine.\n" +
+            "\nUsually the research worker, left running after its window closed.\n" +
+            "It holds a file this update has to replace, so stop it first:\n" +
+            "\n    npm run stop\n" +
+            "\nthen run:  npm run update\n",
+        );
+        process.exit(1);
+      }
     }
 
     // 1. Back up the database.
