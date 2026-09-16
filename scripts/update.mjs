@@ -90,8 +90,14 @@ function somethingOnPort(port, timeoutMs = 300) {
 // The half that must run on freshly pulled code.
 async function postPull() {
   // Repair a wedged migration ledger, if there is one (no-op when healthy).
-  const { fixMigrations } = await import("./fix-migrations.mjs");
-  await fixMigrations();
+  //
+  // This MUST be a child process, not an import. The repair opens a
+  // PrismaClient, which loads the native query-engine DLL into whichever
+  // process runs it — and Node never unloads a native addon, so `$disconnect()`
+  // closes the connection but not the file handle. `prisma generate` below
+  // replaces that exact DLL; on Windows a rename over a file this process still
+  // holds open fails with EPERM, forever, no matter what else is closed.
+  run(`node "${join(root, "scripts", "fix-migrations.mjs")}"`);
 
   step("Updating the database (keeping your data)");
   run("npx prisma migrate deploy");
