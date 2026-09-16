@@ -146,6 +146,13 @@ async function main() {
     );
   }
 
+  console.log("\n— Test 3: database contents —");
+  const { dbCheck, report } = await import("./db-check.mjs");
+  if (report(await dbCheck({ quiet: true })) !== 0) {
+    bad("\nThe database has values the app can't read — pages using them will fail.");
+    process.exit(1);
+  }
+
   console.log("\n🎉 All checks passed — agents should research successfully.\n");
 }
 

@@ -38,6 +38,7 @@ npm run dev       # http://localhost:3000
 npm run update    # pull latest + install + migrate (keeps data); then npm run dev
 npm run backup    # timestamped copy of prisma/dev.db
 npm run doctor    # diagnose the AI path: key → Claude call → live web search
+npm run db:check  # verify stored values still match the schema
 ```
 Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 `.env` is git-ignored and auto-created from `.env.example` (predev/presetup).
@@ -126,6 +127,15 @@ confident-but-wrong AI specifics reaching a client.
   anything answers on port 3000, retries a locked `generate` twice, and explains
   the lock in plain English. Prisma stays pinned at **5.22** — the advertised
   8.x is a major release candidate; don't take the upgrade prompt.
+- **A table-rebuild migration can silently corrupt data.** SQLite accepts a
+  double-quoted identifier that matches no column as a *string literal*, so a
+  generated `INSERT … SELECT "newCol"` run against a database that lacks that
+  column writes the text `"newCol"` into every row instead of failing. Prisma
+  then can't read the table at all ("Conversion failed: input contains invalid
+  characters"). `npm run test:migrations` cannot catch it — an empty database
+  copies no rows — so run **`npm run db:check`** (also the last step of
+  `npm run doctor`) after any migration that rebuilds a table. It compares every
+  Int/Boolean/DateTime column against what's actually stored.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next

@@ -25,6 +25,8 @@
     "worker": "tsx scripts/research-worker.ts",
     "dev:all": "node scripts/dev-all.mjs",
     "test:migrations": "node scripts/test-migrations.mjs",
+    "predb:check": "node scripts/ensure-env.mjs",
+    "db:check": "node scripts/db-check.mjs",
     "fix:migrations": "node scripts/fix-migrations.mjs"
   },
   "prisma": {
