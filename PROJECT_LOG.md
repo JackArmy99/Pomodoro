@@ -2,6 +2,35 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-09 — Migration ordering bug (P3018) and the guard that was missing
+
+`npm run update` failed with `duplicate column name: contentRevision`. Two
+defects, both from one mistake: I hand-dated `revision_aware_verification` as
+`20260916090000` while Prisma auto-dated `add_knowledge_base` `20260915143122`.
+Prisma applies migrations in **name** order.
+
+- Locally I had applied verification first, so the generated knowledge-base
+  `Finding` rebuild baked `contentRevision`/`verifiedRevision`/`verifiedAt` into
+  its CREATE *and* its INSERT…SELECT. Any machine applying in name order created
+  those columns in the rebuild, then failed on the later ALTER.
+- Worse and unobserved: on an **empty** database the knowledge-base INSERT
+  selects `contentRevision` from a table that doesn't have it yet — so
+  `npm run setup` on a new machine was broken too.
+
+Fixes: renamed the verification migration to `20260915142500_…` so it sorts
+first (renaming, not editing an already-applied migration, avoids checksum
+trouble); `scripts/fix-migrations.mjs` repairs a wedged ledger automatically
+inside `npm run update` (clears the failed record, records the renamed migration
+as applied — the columns genuinely exist, so no data is touched);
+`npm run test:migrations` applies the whole history to a throwaway empty DB.
+
+Verified by reproducing the exact failure on a copy of the dev database
+(P3009 → repair → clean deploy, Finding rows and columns intact), and by
+confirming the new gate FAILS when the broken order is restored.
+
+**Root cause worth remembering:** I never ran a from-scratch migrate. A machine
+that already has the columns cannot reveal this class of bug.
+
 ## 2026-09 — Video research M1: durable captions-first ingestion
 
 First milestone of the YouTube Retriever. Pasting a link no longer fetches

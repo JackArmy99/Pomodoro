@@ -11,6 +11,7 @@ import { execSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { fixMigrations } from "./fix-migrations.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const run = (cmd) => execSync(cmd, { stdio: "inherit", cwd: root });
@@ -48,7 +49,10 @@ try {
   step("Installing dependencies");
   run("npm install");
 
-  // 5. Apply new migrations without wiping data.
+  // 5. Repair a wedged migration ledger, if there is one (no-op when healthy).
+  await fixMigrations();
+
+  // 6. Apply new migrations without wiping data.
   step("Updating the database (keeping your data)");
   run("npx prisma migrate deploy");
 

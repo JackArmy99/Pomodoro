@@ -102,6 +102,13 @@ confident-but-wrong AI specifics reaching a client.
 - Everything is server-rendered with server actions; forms post to actions.
 - `ownerId` on records defaults to `"me"` (ready for multi-user auth later).
 - Migrations are committed; data back-fills go in the migration SQL.
+- **Never hand-date a migration folder.** Always create them with
+  `npx prisma migrate dev --create-only` so timestamps stay monotonic. Prisma
+  applies migrations in *name* order, so a hand-picked later timestamp can run
+  after a migration that already created its columns → "duplicate column".
+  Run **`npm run test:migrations`** (applies everything to a throwaway empty DB)
+  before pushing any schema change — a machine that already has the columns will
+  never reveal the bug. `npm run update` self-repairs a wedged ledger.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next
