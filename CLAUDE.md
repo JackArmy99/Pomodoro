@@ -108,7 +108,12 @@ confident-but-wrong AI specifics reaching a client.
   after a migration that already created its columns → "duplicate column".
   Run **`npm run test:migrations`** (applies everything to a throwaway empty DB)
   before pushing any schema change — a machine that already has the columns will
-  never reveal the bug. `npm run update` self-repairs a wedged ledger.
+  never reveal the bug. `npm run update` self-repairs a wedged ledger
+  (`npm run fix:migrations` runs that repair on its own).
+- **`scripts/update.mjs` runs its post-pull half as a fresh child process.**
+  Node loads the script into memory before `git pull` replaces it on disk, so
+  anything after the pull in the same process is still the *old* code. New
+  post-pull steps go in `postPull()`, never inline before it.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next
