@@ -148,6 +148,16 @@ confident-but-wrong AI specifics reaching a client.
   published`. A job enqueued at `summarise` re-analyses a stored transcript
   **without re-fetching it** — `done(stage)` means that stage *finished*, so the
   fetch half is gated on `done("store")`, not `done("summarise")`.
+- **Video summarising is TWO passes, and the split is load-bearing.** Pass A
+  extracts what the video teaches with **no grounding block at all**; pass B
+  classifies relevance/modules from pass A's output, never the transcript.
+  `product_context` contains the firm's triage rule ("ignore generic AI-market
+  hype with no EPM angle") — correct for the Finder, fatal for a summariser: one
+  grounded pass judged a how-to video irrelevant and listed none of what it
+  taught. Never reintroduce grounding into the extraction prompt.
+- **Extraction enumerates.** A video listing ten tips must produce ten points,
+  each named, with what was actually said (names, numbers, settings). Points
+  follow the video's order; `takeaways` carries the ranked view.
 - **Video summaries cite transcript segments, and citations are enforced.** Any
   ordinal the model invents is stripped; a claim left with no real citation is
   dropped and recorded in `coverageJson` rather than shown with a timestamp that

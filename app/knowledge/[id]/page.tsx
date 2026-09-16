@@ -67,8 +67,14 @@ export default async function KnowledgeSourcePage({
   } catch {
     summary = null;
   }
-  if (summary && (!Array.isArray(summary.points) || !Array.isArray(summary.steps))) {
-    summary = null; // an older or malformed revision — show "not summarised yet"
+  if (summary && !Array.isArray(summary.points)) {
+    summary = null; // malformed revision — show "not summarised yet"
+  } else if (summary) {
+    // Fields added after a revision was written must not blank the page.
+    summary.takeaways ??= [];
+    summary.steps ??= [];
+    summary.limits ??= [];
+    summary.modules ??= [];
   }
 
   // Citations can point anywhere in the video, not just the opening segments
@@ -239,18 +245,31 @@ export default async function KnowledgeSourcePage({
               <p className="text-xs text-slate-500">{summary.relevanceReason}</p>
             )}
 
+            {summary.takeaways.length > 0 && (
+              <div className="space-y-1.5 rounded-lg bg-slate-50 p-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Takeaways
+                </h3>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-slate-800">
+                  {summary.takeaways.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {summary.points.length > 0 && (
               <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Key points — most important first
+                  What the video covers ({summary.points.length})
                 </h3>
                 {summary.points.map((p, i) => (
                   <div key={i} className="border-l-2 border-indigo-100 pl-3">
-                    <p className="text-sm text-slate-800">{p.text}</p>
-                    {p.whyItMatters && (
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        Why it matters: {p.whyItMatters}
-                      </p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {p.heading}
+                    </p>
+                    {p.detail && (
+                      <p className="mt-0.5 text-sm text-slate-700">{p.detail}</p>
                     )}
                     <Citations
                       ordinals={p.segmentOrdinals}

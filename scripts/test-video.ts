@@ -38,10 +38,11 @@ function citationGuards() {
   const { summary, dropped } = enforceCitations(
     coerceSummary({
       overview: "x",
+      takeaways: ["one", "two"],
       points: [
-        { text: "Real", whyItMatters: "a", segmentOrdinals: [3, 9999] },
-        { text: "Invented", whyItMatters: "b", segmentOrdinals: [4242] },
-        { text: "Late", whyItMatters: "c", segmentOrdinals: [900] },
+        { heading: "Real", detail: "a", segmentOrdinals: [3, 9999] },
+        { heading: "Invented", detail: "b", segmentOrdinals: [4242] },
+        { heading: "Late", detail: "c", segmentOrdinals: [900] },
       ],
       steps: [{ text: "Step", segmentOrdinals: [5] }],
       relevance: "HIGH",
@@ -49,10 +50,33 @@ function citationGuards() {
     new Set([3, 5, 900]),
   );
   check("relevance normalised", summary.relevance === "high");
+  check("takeaways kept", summary.takeaways.length === 2);
+  check("point detail kept", summary.points[0].detail === "a");
   check("invented ordinal stripped", String(summary.points[0].segmentOrdinals) === "3");
   check("uncitable claim dropped", summary.points.length === 2);
   check("drop is recorded", dropped.length === 1 && dropped[0] === "Invented");
   check("late-video citation survives", summary.points.some((p) => p.segmentOrdinals.includes(900)));
+
+  // A revision written before the two-pass split must still render.
+  const old = coerceSummary({
+    overview: "older revision",
+    points: [{ text: "Old point", whyItMatters: "old reason", segmentOrdinals: [1] }],
+    steps: [],
+    relevance: "low",
+  });
+  check("old shape maps text -> heading", old.points[0].heading === "Old point");
+  check("old shape maps whyItMatters -> detail", old.points[0].detail === "old reason");
+  check("missing takeaways defaults to empty", Array.isArray(old.takeaways) && old.takeaways.length === 0);
+
+  // A ten-item list must survive as ten points, not be collapsed.
+  const ten = coerceSummary({
+    points: Array.from({ length: 10 }, (_, i) => ({
+      heading: `Tip ${i + 1}`,
+      detail: `how to do tip ${i + 1}`,
+      segmentOrdinals: [i],
+    })),
+  });
+  check("a ten-item list stays ten points", ten.points.length === 10);
 
   for (const bad of [null, {}, { points: "nope" }]) {
     try {
@@ -136,7 +160,8 @@ async function pipelineGuards(prisma: PrismaClient) {
       status: "published",
       summaryJson: JSON.stringify({
         overview: "How to run a group close.",
-        points: [{ text: "Lock the period first", whyItMatters: "avoids restatement", segmentOrdinals: [4] }],
+        takeaways: ["Lock the period before you start"],
+        points: [{ heading: "Lock the period first", detail: "Stops late postings changing a signed-off number.", segmentOrdinals: [4] }],
         steps: [{ text: "Open the close monitor", segmentOrdinals: [7] }],
         limits: ["Does not cover intercompany"],
         relevance: "high",

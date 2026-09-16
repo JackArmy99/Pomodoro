@@ -49,6 +49,8 @@ export function errorAdvice(code: string | null, message: string | null): string
       return "The model's summary came back malformed. Nothing was lost — press Summarise again.";
     case "no_valid_points":
       return "The summary couldn't be traced back to the transcript, so it was discarded rather than shown with timestamps that go nowhere. Try again.";
+    case "truncated":
+      return "The notes ran longer than the reply limit and were cut off. Press Summarise again; if it keeps happening on the same video, tell Claude — it may need splitting into sections.";
     case "no_version":
       return "There's no stored transcript for this video yet.";
     case "network_error":
