@@ -87,3 +87,23 @@ export async function workerLooksAlive(): Promise<boolean> {
   });
   return Boolean(recent);
 }
+
+// Re-analyse a video we already hold, without re-fetching captions. The job
+// starts at the `summarise` stage, so the pipeline skips the whole acquisition
+// half and works from the stored transcript.
+export async function enqueueAnalysis(sourceId: string): Promise<void> {
+  const source = await prisma.knowledgeSource.findUnique({
+    where: { id: sourceId },
+    select: { currentVersionId: true },
+  });
+  if (!source?.currentVersionId) return; // nothing stored to summarise yet
+
+  const active = await prisma.researchJob.findFirst({
+    where: { sourceId, state: { in: ["queued", "running", "retry_wait"] } },
+  });
+  if (active) return;
+
+  await prisma.researchJob.create({
+    data: { sourceId, kind: "analyse", stage: "summarise" },
+  });
+}

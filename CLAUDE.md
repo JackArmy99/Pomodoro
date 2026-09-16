@@ -39,6 +39,8 @@ npm run update    # pull latest + install + migrate (keeps data); then npm run d
 npm run backup    # timestamped copy of prisma/dev.db
 npm run doctor    # diagnose the AI path: key → Claude call → live web search
 npm run db:check  # verify stored values still match the schema
+npm run dev:all   # app + research worker together (videos need the worker)
+npm run test:video # free, no-API gate for the video pipeline
 ```
 Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 `.env` is git-ignored and auto-created from `.env.example` (predev/presetup).
@@ -75,6 +77,9 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
   approve fan-out).
 - `/briefs`, `/briefs/[id]` — briefs + "who's affected".
 - `/opportunities` — pipeline + categories.
+- `/knowledge`, `/knowledge/[id]` — videos Beacon has read: full timestamped
+  transcript plus a cited summary (key points ranked by importance, each linking
+  to that second of the video) and the linked inbox item.
 - `/clients`, `/clients/[id]`, `/modules`, `/modules/[id]`.
 
 ## Research engine (lib/research/)
@@ -89,7 +94,9 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
   `researchFromBrief`, `researchAdHoc`, `deepenFinding`.
 - Steering lives only on `Agent.briefing` (the old global `research_instructions`
   Setting was retired — it was being injected twice).
-- `youtube.ts` (captions), `extract.ts` (PDF/Word text).
+- `video/youtube.ts` (canonicalise + captions + typed failures),
+  `video/pipeline.ts` (job stages), `video/summarise.ts` (cited summary),
+  `extract.ts` (PDF/Word text). `cost.ts` holds the shared model rates.
 - `lib/anthropic.ts` `summariseItem` (summary + modules + relevance).
 
 Flow: **agent runs → findings (scored, module+body tagged, dated) → inbox →
@@ -136,6 +143,17 @@ confident-but-wrong AI specifics reaching a client.
   copies no rows — so run **`npm run db:check`** (also the last step of
   `npm run doctor`) after any migration that rebuilds a table. It compares every
   Int/Boolean/DateTime column against what's actually stored.
+- **Videos need the worker running** (`npm run dev:all`, or `npm run worker` in a
+  second terminal). Stages: `metadata → captions → store → summarise → finding →
+  published`. A job enqueued at `summarise` re-analyses a stored transcript
+  **without re-fetching it** — `done(stage)` means that stage *finished*, so the
+  fetch half is gated on `done("store")`, not `done("summarise")`.
+- **Video summaries cite transcript segments, and citations are enforced.** Any
+  ordinal the model invents is stripped; a claim left with no real citation is
+  dropped and recorded in `coverageJson` rather than shown with a timestamp that
+  goes nowhere. Transcripts are untrusted data, never instructions.
+- Run **`npm run test:video`** before touching the video pipeline — a throwaway
+  database, no model calls, so it is free.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next
@@ -146,6 +164,9 @@ confident-but-wrong AI specifics reaching a client.
 - Hardening round (diagnostic audit): `npm run doctor`, briefing-as-topic fix,
   per-agent research briefs resurfaced, guarded re-seed, pending states on every
   slow button, failed runs always recorded.
+- Video Retriever: **M1** durable captions-first ingestion (proven on a 26-min
+  video: 902 segments stored in full) and **M2** cited summary → pending Finding.
+  Next: M3 chunking + search over transcripts, M4 cancel/retry/budget UI.
 - Next: test & tune the Finder live; then **Retriever** (point at video/manual)
   and **Comparer** (version-diff manuals); later ASR for caption-less video,
   guardrailed portal login, hosting (Azure) + scheduling + team sharing.

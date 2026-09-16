@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { enqueueVideo, requeueSource, cancelJob } from "@/lib/knowledge/sources";
+import {
+  enqueueVideo,
+  requeueSource,
+  cancelJob,
+  enqueueAnalysis,
+} from "@/lib/knowledge/sources";
 
 // Submit a video for research. Returns immediately — the worker does the work,
 // so the browser never waits on a multi-minute job.
@@ -33,4 +38,13 @@ export async function cancelSourceJob(formData: FormData) {
   if (!jobId) return;
   await cancelJob(jobId);
   revalidatePath(`/knowledge/${sourceId}`);
+}
+
+// Summarise (or re-summarise) a video whose transcript is already stored.
+export async function summariseSource(formData: FormData) {
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) return;
+  await enqueueAnalysis(sourceId);
+  revalidatePath(`/knowledge/${sourceId}`);
+  revalidatePath("/knowledge");
 }

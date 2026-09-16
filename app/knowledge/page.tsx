@@ -19,7 +19,12 @@ export default async function KnowledgePage({
       orderBy: { createdAt: "desc" },
       include: {
         jobs: { orderBy: { createdAt: "desc" }, take: 1 },
-        versions: { select: { _count: { select: { segments: true } } } },
+        versions: {
+          select: {
+            _count: { select: { segments: true } },
+            revisions: { where: { status: "published" }, select: { id: true }, take: 1 },
+          },
+        },
       },
     }),
     workerLooksAlive(),
@@ -86,6 +91,7 @@ export default async function KnowledgePage({
               (n, v) => n + v._count.segments,
               0,
             );
+            const summarised = s.versions.some((v) => v.revisions.length > 0);
             return (
               <li key={s.id}>
                 <Link href={`/knowledge/${s.id}`} className="card block">
@@ -103,6 +109,11 @@ export default async function KnowledgePage({
                     {segments > 0 && (
                       <span className="text-xs text-slate-400">
                         {segments} transcript segments
+                      </span>
+                    )}
+                    {segments > 0 && !summarised && (
+                      <span className="chip border-slate-200 bg-slate-50 text-slate-500">
+                        Not summarised
                       </span>
                     )}
                     <span className="ml-auto text-xs text-slate-400">

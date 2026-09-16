@@ -22,6 +22,15 @@ export const JOB_STATE_STYLES: Record<string, string> = {
   cancelled: "border-slate-200 bg-slate-100 text-slate-500",
 };
 
+export const STAGE_LABELS: Record<string, string> = {
+  metadata: "Reading video details",
+  captions: "Fetching the transcript",
+  store: "Storing the transcript",
+  summarise: "Summarising",
+  finding: "Adding to the inbox",
+  published: "Done",
+};
+
 export function errorAdvice(code: string | null, message: string | null): string {
   switch (code) {
     case "captions_disabled":
@@ -34,6 +43,14 @@ export function errorAdvice(code: string | null, message: string | null): string
       return "YouTube is rate-limiting this machine. Wait a few minutes and retry.";
     case "video_or_network":
       return "Couldn't load this video. It may be private or deleted — or this machine couldn't reach YouTube (proxy, VPN or no connection). Open the link in your browser to check, then retry.";
+    case "no_api_key":
+      return "There's no ANTHROPIC_API_KEY set, so there was nothing to summarise with. The transcript is stored in full — add the key and summarise again.";
+    case "bad_json":
+      return "The model's summary came back malformed. Nothing was lost — press Summarise again.";
+    case "no_valid_points":
+      return "The summary couldn't be traced back to the transcript, so it was discarded rather than shown with timestamps that go nowhere. Try again.";
+    case "no_version":
+      return "There's no stored transcript for this video yet.";
     case "network_error":
       return `Couldn't reach YouTube: ${message ?? "network error"}.`;
     default:

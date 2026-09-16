@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { hasApiKey, resolveRunModel, buildGroundingBlock } from "@/lib/anthropic";
+import { ratesFor } from "@/lib/research/cost";
 
 export type WebItem = {
   title: string;
@@ -88,14 +89,6 @@ async function createWithSearch(
 }
 
 // Per-model token rates ($ per 1M) so the cost estimate stays honest.
-function ratesFor(model: string): { inRate: number; outRate: number } {
-  if (model.includes("opus")) return { inRate: 5, outRate: 25 };
-  if (model.includes("haiku")) return { inRate: 1, outRate: 5 };
-  if (model.includes("fable") || model.includes("mythos"))
-    return { inRate: 10, outRate: 50 };
-  return { inRate: 2, outRate: 10 }; // sonnet
-}
-
 // A web-research agent: uses Claude's built-in web search to gather recent
 // items about a topic, each scored for relevance. Returns [] when there's no
 // API key. Web search is a billed server tool (a few pennies per run).

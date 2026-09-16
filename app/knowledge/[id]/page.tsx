@@ -1,13 +1,22 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { retrySource, cancelSourceJob } from "@/app/actions/knowledge";
+import {
+  retrySource,
+  cancelSourceJob,
+  summariseSource,
+} from "@/app/actions/knowledge";
+import SubmitButton from "@/components/SubmitButton";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
 import {
   JOB_STATE_LABELS,
   JOB_STATE_STYLES,
+  STAGE_LABELS,
   errorAdvice,
 } from "@/lib/knowledge/format";
+import type { VideoSummary, Coverage } from "@/lib/research/video/summarise";
+import { formatPence } from "@/lib/research/cost";
+import { RELEVANCE_STYLES, RELEVANCE_LABELS } from "@/lib/format";
 import { formatTimestamp, timestampUrl } from "@/lib/research/video/youtube";
 import { formatDate } from "@/lib/format";
 
@@ -40,6 +49,57 @@ export default async function KnowledgeSourcePage({
         take: 40,
       })
     : [];
+
+  const analysis = version
+    ? await prisma.analysisRevision.findFirst({
+        where: { sourceVersionId: version.id, status: "published" },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
+  // Parsing is guarded: a malformed revision must not take the page down with
+  // it — the transcript below is the thing that matters.
+  let summary: VideoSummary | null = null;
+  let coverage: Coverage | null = null;
+  try {
+    if (analysis?.summaryJson) summary = JSON.parse(analysis.summaryJson);
+    if (analysis?.coverageJson) coverage = JSON.parse(analysis.coverageJson);
+  } catch {
+    summary = null;
+  }
+  if (summary && (!Array.isArray(summary.points) || !Array.isArray(summary.steps))) {
+    summary = null; // an older or malformed revision — show "not summarised yet"
+  }
+
+  // Citations can point anywhere in the video, not just the opening segments
+  // shown below, so look up exactly the ones cited.
+  const citedOrdinals = summary
+    ? Array.from(
+        new Set(
+          [...summary.points, ...summary.steps].flatMap(
+            (x) => x.segmentOrdinals ?? [],
+          ),
+        ),
+      )
+    : [];
+  const citedSegments =
+    version && citedOrdinals.length
+      ? await prisma.transcriptSegment.findMany({
+          where: { sourceVersionId: version.id, ordinal: { in: citedOrdinals } },
+          select: { ordinal: true, startMs: true },
+        })
+      : [];
+  const segmentStarts = new Map(citedSegments.map((s) => [s.ordinal, s.startMs]));
+
+  const finding = await prisma.finding.findUnique({
+    where: { knowledgeSourceId: source.id },
+    select: { id: true, status: true },
+  });
+
+  const spent = await prisma.researchJob.aggregate({
+    where: { sourceId: source.id },
+    _sum: { spentMicroUsd: true },
+  });
 
   const workerAlive = await workerLooksAlive();
   const pending = ["queued", "running", "retry_wait"].includes(job?.state ?? "");
@@ -113,8 +173,9 @@ export default async function KnowledgeSourcePage({
       {pending && job && (
         <div className="card flex items-center justify-between gap-2">
           <p className="text-sm text-slate-600">
-            Stage: <strong>{job.stage}</strong> · attempt {job.attempt}. Refresh
-            to see progress.
+            {STAGE_LABELS[job.stage] ?? job.stage}
+            {job.attempt > 0 ? ` · attempt ${job.attempt + 1}` : ""}. Refresh to
+            see progress.
           </p>
           <form action={cancelSourceJob}>
             <input type="hidden" name="jobId" value={job.id} />
@@ -125,6 +186,125 @@ export default async function KnowledgeSourcePage({
           </form>
         </div>
       )}
+
+      {/* Summary — what the video actually says, most important first. Every
+          point links to the second of the video it came from. */}
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-900">Summary</h2>
+          {version && !pending && (
+            <form action={summariseSource}>
+              <input type="hidden" name="sourceId" value={source.id} />
+              <SubmitButton pendingLabel="Queueing…">
+                {summary ? "Summarise again" : "Summarise"}
+              </SubmitButton>
+            </form>
+          )}
+        </div>
+
+        {!summary ? (
+          <p className="card text-sm text-slate-500">
+            {version
+              ? "Not summarised yet. The full transcript is stored — press Summarise to get the key points, each linked to the moment it came from."
+              : "Nothing to summarise until the transcript is stored."}
+          </p>
+        ) : (
+          <div className="card space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`chip ${RELEVANCE_STYLES[summary.relevance]}`}>
+                {RELEVANCE_LABELS[summary.relevance]}
+              </span>
+              {summary.modules.map((m) => (
+                <span
+                  key={m}
+                  className="chip border-indigo-100 bg-indigo-50 text-indigo-600"
+                >
+                  {m}
+                </span>
+              ))}
+              {finding && (
+                <Link
+                  href={`/research/${finding.id}`}
+                  className="ml-auto text-xs font-medium text-indigo-600 hover:underline"
+                >
+                  In the inbox ({finding.status}) →
+                </Link>
+              )}
+            </div>
+
+            {summary.overview && (
+              <p className="text-sm text-slate-700">{summary.overview}</p>
+            )}
+            {summary.relevanceReason && (
+              <p className="text-xs text-slate-500">{summary.relevanceReason}</p>
+            )}
+
+            {summary.points.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Key points — most important first
+                </h3>
+                {summary.points.map((p, i) => (
+                  <div key={i} className="border-l-2 border-indigo-100 pl-3">
+                    <p className="text-sm text-slate-800">{p.text}</p>
+                    {p.whyItMatters && (
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Why it matters: {p.whyItMatters}
+                      </p>
+                    )}
+                    <Citations
+                      ordinals={p.segmentOrdinals}
+                      starts={segmentStarts}
+                      url={source.canonicalUrl}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {summary.steps.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Steps
+                </h3>
+                <ol className="list-decimal space-y-1.5 pl-5">
+                  {summary.steps.map((st, i) => (
+                    <li key={i} className="text-sm text-slate-800">
+                      {st.text}
+                      <Citations
+                        ordinals={st.segmentOrdinals}
+                        starts={segmentStarts}
+                        url={source.canonicalUrl}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {summary.limits.length > 0 && (
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  What this video doesn&apos;t establish
+                </h3>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                  {summary.limits.map((l, i) => (
+                    <li key={i}>{l}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {coverage && coverage.droppedPoints.length > 0 && (
+              <p className="text-xs text-amber-700">
+                {coverage.droppedPoints.length} claim
+                {coverage.droppedPoints.length === 1 ? " was" : "s were"} left
+                out because they couldn&apos;t be traced to the transcript.
+              </p>
+            )}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">
@@ -175,6 +355,10 @@ export default async function KnowledgeSourcePage({
           {version && <li>Transcript language: {version.language ?? "unknown"}</li>}
           {job && <li>Job state: {job.state} · stage {job.stage}</li>}
           {job?.finishedAt && <li>Finished: {formatDate(job.finishedAt)}</li>}
+          <li>
+            Model cost so far: {formatPence(spent._sum.spentMicroUsd ?? 0)}{" "}
+            (estimate)
+          </li>
           <li className="pt-1 text-slate-400">
             Speech evidence only — this version does not inspect the video
             picture, so on-screen-only detail is not captured.
@@ -182,5 +366,35 @@ export default async function KnowledgeSourcePage({
         </ul>
       </section>
     </div>
+  );
+}
+
+// The timestamps under a claim: each links straight to that second of the video,
+// so any point can be checked in one click rather than taken on trust.
+function Citations({
+  ordinals,
+  starts,
+  url,
+}: {
+  ordinals: number[];
+  starts: Map<number, number>;
+  url: string;
+}) {
+  const known = (ordinals ?? []).filter((o) => starts.has(o));
+  if (known.length === 0) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-2">
+      {known.map((o) => (
+        <a
+          key={o}
+          href={timestampUrl(url, starts.get(o)!)}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-xs text-indigo-600 hover:underline"
+        >
+          {formatTimestamp(starts.get(o)!)}
+        </a>
+      ))}
+    </span>
   );
 }
