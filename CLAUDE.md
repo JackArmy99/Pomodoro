@@ -114,6 +114,13 @@ confident-but-wrong AI specifics reaching a client.
   Node loads the script into memory before `git pull` replaces it on disk, so
   anything after the pull in the same process is still the *old* code. New
   post-pull steps go in `postPull()`, never inline before it.
+- **Stop the app before `npm run update`.** Windows won't replace a file that a
+  running process has open, and a live `npm run dev` / `dev:all` / `worker` /
+  `prisma studio` holds the Prisma query-engine DLL → `EPERM … rename
+  query_engine-windows.dll.node`. The updater now refuses to start if anything
+  answers on port 3000, retries a locked `prisma generate` twice, and says so in
+  plain English. Prisma stays pinned at **5.22** — the advertised 8.x is a major
+  release candidate; don't take the upgrade prompt.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next
