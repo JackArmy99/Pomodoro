@@ -29,6 +29,9 @@ export const STAGE_LABELS: Record<string, string> = {
   summarise: "Summarising",
   finding: "Adding to the inbox",
   published: "Done",
+  // document import
+  read: "Reading the file",
+  compare: "Comparing with the last version",
 };
 
 export function errorAdvice(code: string | null, message: string | null): string {
@@ -51,6 +54,14 @@ export function errorAdvice(code: string | null, message: string | null): string
       return "The summary couldn't be traced back to the transcript, so it was discarded rather than shown with timestamps that go nowhere. Try again.";
     case "truncated":
       return "The notes ran longer than the reply limit and were cut off. Press Summarise again; if it keeps happening on the same video, tell Claude — it may need splitting into sections.";
+    case "no_text":
+      return "No text could be read from that file. If it's a scan of paper rather than a digital document, reading it needs OCR — not in this version.";
+    case "old_word_format":
+      return "Old .doc files aren't supported. Open it in Word, save as .docx, and upload again.";
+    case "unreadable":
+      return message ?? "That file couldn't be read.";
+    case "file_missing":
+      return "The uploaded file is no longer on disk. Upload it again.";
     case "no_version":
       return "There's no stored transcript for this video yet.";
     case "network_error":

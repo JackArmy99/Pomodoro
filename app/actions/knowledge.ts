@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   enqueueVideo,
+  enqueueDocument,
   requeueSource,
   cancelJob,
   enqueueAnalysis,
@@ -47,4 +48,22 @@ export async function summariseSource(formData: FormData) {
   await enqueueAnalysis(sourceId);
   revalidatePath(`/knowledge/${sourceId}`);
   revalidatePath("/knowledge");
+}
+
+// Upload a manual or other document. Import costs nothing — no model call is
+// made until you ask a question or ask for the changes to be explained.
+export async function submitDocument(formData: FormData) {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    redirect(`/knowledge?error=${encodeURIComponent("Choose a file to upload.")}`);
+  }
+
+  const bytes = Buffer.from(await (file as File).arrayBuffer());
+  const result = await enqueueDocument((file as File).name, bytes);
+  if (!result.ok) {
+    redirect(`/knowledge?error=${encodeURIComponent(result.error)}`);
+  }
+
+  revalidatePath("/knowledge");
+  redirect(`/knowledge/${result.sourceId}`);
 }

@@ -26,6 +26,7 @@
     "stop": "node scripts/stop.mjs",
     "test:migrations": "node scripts/test-migrations.mjs",
     "test:video": "tsx scripts/test-video.ts",
+    "test:docs": "tsx scripts/test-docs.ts",
     "predb:check": "node scripts/ensure-env.mjs",
     "db:check": "node scripts/db-check.mjs",
     "fix:migrations": "node scripts/fix-migrations.mjs",

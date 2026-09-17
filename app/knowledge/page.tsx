@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { submitVideo } from "@/app/actions/knowledge";
+import { submitVideo, submitDocument } from "@/app/actions/knowledge";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
 import { JOB_STATE_LABELS, JOB_STATE_STYLES } from "@/lib/knowledge/format";
 import { formatTimestamp } from "@/lib/research/video/youtube";
@@ -77,6 +77,28 @@ export default async function KnowledgePage({
           />
           <SubmitButton className="whitespace-nowrap" pendingLabel="Queueing…">
             Research
+          </SubmitButton>
+        </div>
+      </form>
+
+      <form action={submitDocument} className="card space-y-2">
+        <h2 className="text-sm font-semibold text-slate-900">Add a document</h2>
+        <p className="text-xs text-slate-500">
+          A manual, release note or spec (PDF or Word). It is stored page by page
+          and costs nothing to import — no AI is used until you ask a question or
+          ask what changed. Upload a newer version with the same file name and
+          Beacon will show you exactly what changed.
+        </p>
+        <div className="flex items-end gap-2">
+          <input
+            name="file"
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            className="field"
+            required
+          />
+          <SubmitButton className="whitespace-nowrap" pendingLabel="Uploading…">
+            Import
           </SubmitButton>
         </div>
       </form>

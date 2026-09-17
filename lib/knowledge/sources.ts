@@ -119,3 +119,67 @@ export async function enqueueAnalysis(sourceId: string): Promise<void> {
     data: { sourceId, kind: "analyse", stage: "summarise" },
   });
 }
+
+// Save an uploaded document and queue it for import. The bytes go to disk and
+// the worker does the parsing, so the browser never waits on a 300-page PDF.
+export async function enqueueDocument(
+  fileName: string,
+  bytes: Buffer,
+): Promise<EnqueueResult> {
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { join, dirname } = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const { documentKey } = await import("@/lib/knowledge/documents");
+
+  const key = documentKey(fileName);
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const dir = join(root, "storage", "documents");
+  await mkdir(dir, { recursive: true });
+
+  // Named by document identity, not by upload: a revised manual with the same
+  // name overwrites the file and becomes a new VERSION of the same source,
+  // which is what makes change detection possible.
+  const safeExt = (fileName.match(/\.[a-z0-9]{1,8}$/i)?.[0] ?? ".bin").toLowerCase();
+  const path = join(dir, `${key}${safeExt}`);
+  await writeFile(path, bytes);
+
+  const existing = await prisma.knowledgeSource.findUnique({
+    where: {
+      provider_externalId_ownerId: {
+        provider: "upload",
+        externalId: key,
+        ownerId: "me",
+      },
+    },
+  });
+
+  const source =
+    existing ??
+    (await prisma.knowledgeSource.create({
+      data: {
+        provider: "upload",
+        kind: "document",
+        externalId: key,
+        canonicalUrl: `file:${path}`,
+        title: fileName,
+      },
+    }));
+
+  if (existing) {
+    await prisma.knowledgeSource.update({
+      where: { id: source.id },
+      data: { canonicalUrl: `file:${path}`, title: fileName },
+    });
+  }
+
+  const active = await prisma.researchJob.findFirst({
+    where: { sourceId: source.id, state: { in: ["queued", "running", "retry_wait"] } },
+  });
+  if (!active) {
+    await prisma.researchJob.create({
+      data: { sourceId: source.id, kind: "document", stage: "read" },
+    });
+  }
+
+  return { ok: true, sourceId: source.id, created: !existing };
+}

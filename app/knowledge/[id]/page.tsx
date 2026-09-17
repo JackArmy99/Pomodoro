@@ -98,6 +98,25 @@ export default async function KnowledgeSourcePage({
       : [];
   const segmentStarts = new Map(citedSegments.map((s) => [s.ordinal, s.startMs]));
 
+  const isDocument = source.kind === "document";
+
+  // Documents record a diff against the previous version — computed locally, so
+  // it exists whether or not anyone ever pays to have it explained.
+  const diffRevision = version
+    ? await prisma.analysisRevision.findFirst({
+        where: { sourceVersionId: version.id, pipelineVersion: "diff" },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+  let changes: any[] = [];
+  let changeCoverage: any = null;
+  try {
+    if (diffRevision?.summaryJson) changes = JSON.parse(diffRevision.summaryJson).changes ?? [];
+    if (diffRevision?.coverageJson) changeCoverage = JSON.parse(diffRevision.coverageJson);
+  } catch {
+    changes = [];
+  }
+
   const finding = await prisma.finding.findUnique({
     where: { knowledgeSourceId: source.id },
     select: { id: true, status: true },
@@ -134,6 +153,11 @@ export default async function KnowledgeSourcePage({
               {formatTimestamp(source.durationMs)}
             </span>
           ) : null}
+          {isDocument && (
+            <span className="chip border-slate-200 bg-slate-50 text-slate-600">
+              Document{version ? ` · version ${version.version}` : ""}
+            </span>
+          )}
           {version && (
             <span className="chip border-slate-200 bg-slate-50 text-slate-600">
               {version.transcriptMethod === "captions"
@@ -155,14 +179,20 @@ export default async function KnowledgeSourcePage({
         {source.channel && (
           <p className="text-sm text-slate-500">{source.channel}</p>
         )}
-        <a
-          href={source.canonicalUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs font-medium text-indigo-600 hover:underline"
-        >
-          Watch on YouTube ↗
-        </a>
+        {isDocument ? (
+          <p className="text-xs text-slate-400">
+            Imported file · {source.externalId}
+          </p>
+        ) : (
+          <a
+            href={source.canonicalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-medium text-indigo-600 hover:underline"
+          >
+            Watch on YouTube ↗
+          </a>
+        )}
       </header>
 
       {pending && !workerAlive && (
@@ -208,8 +238,71 @@ export default async function KnowledgeSourcePage({
         </div>
       )}
 
+      {/* What changed — for documents this is computed locally, so it is free
+          and available on every re-import. */}
+      {isDocument && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-900">
+            What changed in this version
+          </h2>
+          {!diffRevision ? (
+            <p className="card text-sm text-slate-500">
+              This is the first version, so there is nothing to compare against.
+              Upload a newer file with the same name and the changes will appear
+              here.
+            </p>
+          ) : changes.length === 0 ? (
+            <p className="card text-sm text-slate-500">
+              Nothing changed from the previous version.
+            </p>
+          ) : (
+            <div className="card space-y-3">
+              <p className="text-xs text-slate-500">
+                {changes.length} change{changes.length === 1 ? "" : "s"}
+                {changeCoverage
+                  ? ` · ${changeCoverage.unchanged} paragraphs unchanged`
+                  : ""}
+                . Worked out on this machine — no AI, no cost.
+              </p>
+              {changes.slice(0, 60).map((c: any, i: number) => (
+                <div key={i} className="border-l-2 border-slate-200 pl-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    {c.kind === "changed"
+                      ? "Reworded"
+                      : c.kind === "added"
+                        ? "Added"
+                        : "Removed"}
+                    {c.page ? ` · page ${c.page}` : ""}
+                  </p>
+                  {c.kind === "changed" ? (
+                    <>
+                      <p className="text-sm text-rose-700 line-through decoration-rose-300">
+                        {c.before}
+                      </p>
+                      <p className="text-sm text-emerald-800">{c.after}</p>
+                    </>
+                  ) : (
+                    <p
+                      className={`text-sm ${c.kind === "added" ? "text-emerald-800" : "text-rose-700 line-through decoration-rose-300"}`}
+                    >
+                      {c.text}
+                    </p>
+                  )}
+                </div>
+              ))}
+              {changes.length > 60 && (
+                <p className="text-xs text-slate-400">
+                  Showing the first 60 of {changes.length} changes.
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Summary — what the video actually says, most important first. Every
           point links to the second of the video it came from. */}
+      {!isDocument && (
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-900">Summary</h2>
@@ -340,12 +433,15 @@ export default async function KnowledgeSourcePage({
         )}
       </section>
 
+      )}
+
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">
-          Transcript{" "}
+          {isDocument ? "Contents" : "Transcript"}{" "}
           {version && (
             <span className="font-normal text-slate-400">
-              ({version._count.segments} segments, stored in full)
+              ({version._count.segments}{" "}
+              {isDocument ? "paragraphs" : "segments"}, stored in full)
             </span>
           )}
         </h2>
@@ -358,14 +454,20 @@ export default async function KnowledgeSourcePage({
             <div className="card divide-y divide-slate-100">
               {segments.map((s) => (
                 <p key={s.id} className="flex gap-3 py-1.5 text-sm">
-                  <a
-                    href={timestampUrl(source.canonicalUrl, s.startMs)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="shrink-0 font-mono text-xs text-indigo-600 hover:underline"
-                  >
-                    {formatTimestamp(s.startMs)}
-                  </a>
+                  {isDocument ? (
+                    <span className="shrink-0 font-mono text-xs text-slate-400">
+                      {s.page ? `p${s.page}` : "—"}
+                    </span>
+                  ) : (
+                    <a
+                      href={timestampUrl(source.canonicalUrl, s.startMs)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 font-mono text-xs text-indigo-600 hover:underline"
+                    >
+                      {formatTimestamp(s.startMs)}
+                    </a>
+                  )}
                   <span className="text-slate-700">{s.text}</span>
                 </p>
               ))}

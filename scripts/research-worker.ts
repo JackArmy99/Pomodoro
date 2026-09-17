@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { runVideoJob } from "@/lib/research/video/pipeline";
+import { runDocumentJob } from "@/lib/knowledge/documentPipeline";
 
 const WORKER_ID = `${process.pid}-${randomUUID().slice(0, 8)}`;
 const LEASE_MS = 2 * 60 * 1000;
@@ -105,7 +106,13 @@ async function main() {
     console.log(`[worker] job ${job.id} — ${job.source.canonicalUrl}`);
     const beat = startHeartbeat(job.id);
     try {
-      await runVideoJob({ prisma, job, workerId: WORKER_ID });
+      // A document import and a video run share the queue, the lease and the
+      // stage bookkeeping — only the stages themselves differ.
+      if (job.kind === "document") {
+        await runDocumentJob({ prisma, job, workerId: WORKER_ID });
+      } else {
+        await runVideoJob({ prisma, job, workerId: WORKER_ID });
+      }
       const after = await prisma.researchJob.findUnique({
         where: { id: job.id },
         select: { state: true, errorCode: true },

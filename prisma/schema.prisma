@@ -332,6 +332,7 @@ model TranscriptSegment {
   startMs         Int
   endMs           Int
   text            String
+  page            Int? // documents cite a page; videos cite a timestamp
 
   @@unique([sourceVersionId, ordinal])
 }
