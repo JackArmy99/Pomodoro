@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { runVideoJob } from "@/lib/research/video/pipeline";
 import { runDocumentJob } from "@/lib/knowledge/documentPipeline";
+import { runPageJob } from "@/lib/knowledge/pagePipeline";
 
 const WORKER_ID = `${process.pid}-${randomUUID().slice(0, 8)}`;
 const LEASE_MS = 2 * 60 * 1000;
@@ -110,6 +111,8 @@ async function main() {
       // stage bookkeeping — only the stages themselves differ.
       if (job.kind === "document") {
         await runDocumentJob({ prisma, job, workerId: WORKER_ID });
+      } else if (job.kind === "page" || job.kind === "page_dry") {
+        await runPageJob({ prisma, job, workerId: WORKER_ID });
       } else {
         await runVideoJob({ prisma, job, workerId: WORKER_ID });
       }

@@ -213,6 +213,17 @@ confident-but-wrong AI specifics reaching a client.
 - **Beacon never stores a portal password.** `npm run portal:login` opens a real
   browser, Jack signs in himself, and the session is reused from
   `storage/portal-profile/`. Keeps working if the portal adds SSO or 2FA.
+- **A watched portal page is a document that edits itself.**
+  `lib/knowledge/pagePipeline.ts` mirrors `documentPipeline.ts`: fetch → store →
+  compare → published, with NO model call. An unchanged page creates no version
+  and records no diff, which is why re-checking often is affordable. Every URL
+  touched is stored on `ResearchJob.detail` as an audit trail.
+- **Retrieval is off until `portal_enabled` is set** (`lib/portal/enabled.ts`).
+  The toggle's label is Jack's recorded confirmation that automated access is
+  permitted under the Wolters Kluwer agreement; don't ask again.
+- **`lib/portal/browser.ts` only adapts Playwright to the `Ctx` interface** that
+  `fetch.ts` already defines — pacing, caps, logging and the 429/403 abort are
+  tested against a fake browser and must stay that way.
 - **Playwright is an OPTIONAL dependency** (~300MB), declared in
   `types/playwright.d.ts` and loaded dynamically, so nobody who never touches
   the portal pays for it. `npm run portal:setup` installs it.

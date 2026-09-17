@@ -380,6 +380,7 @@ model ResearchJob {
   cancelRequestedAt DateTime?
   errorCode         String?
   errorMessage      String?
+  detail            String? // e.g. the portal fetch log: every URL touched
   budgetMicroUsd    Int             @default(1000000) // $1 default cap
   spentMicroUsd     Int             @default(0)
   createdAt         DateTime        @default(now())

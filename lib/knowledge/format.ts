@@ -32,6 +32,7 @@ export const STAGE_LABELS: Record<string, string> = {
   // document import
   read: "Reading the file",
   compare: "Comparing with the last version",
+  fetch: "Reading the page",
 };
 
 export function errorAdvice(code: string | null, message: string | null): string {
@@ -62,6 +63,22 @@ export function errorAdvice(code: string | null, message: string | null): string
       return message ?? "That file couldn't be read.";
     case "file_missing":
       return "The uploaded file is no longer on disk. Upload it again.";
+    case "portal_disabled":
+      return "Portal access is switched off. Turn it on from the Knowledge page — that switch is your confirmation that automated access is allowed under your Wolters Kluwer agreement.";
+    case "no_session":
+      return "No saved portal session yet. Run:  npm run portal:login";
+    case "session_expired":
+      return "The portal session has expired. Run:  npm run portal:login";
+    case "dry_run":
+      return "Dry run — nothing was retrieved. The pages it would read are listed below. Untick 'dry run' to store the page.";
+    case "blocked":
+      return message ?? "The portal pushed back, so the run stopped rather than trying to get around it.";
+    case "page_cap":
+      return message ?? "Stopped at the page limit for one run.";
+    case "refused":
+      return message ?? "That address isn't on the allowed list.";
+    case "no_browser":
+      return message ?? "The browser isn't installed. Run:  npm run portal:setup";
     case "no_version":
       return "There's no stored transcript for this video yet.";
     case "network_error":

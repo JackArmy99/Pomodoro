@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { submitVideo, submitDocument } from "@/app/actions/knowledge";
+import {
+  submitVideo,
+  submitDocument,
+  submitPage,
+  togglePortal,
+} from "@/app/actions/knowledge";
+import { portalEnabled } from "@/lib/portal/enabled";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
 import { JOB_STATE_LABELS, JOB_STATE_STYLES } from "@/lib/knowledge/format";
 import { formatTimestamp } from "@/lib/research/video/youtube";
@@ -15,7 +21,7 @@ export default async function KnowledgePage({
 }: {
   searchParams: { error?: string };
 }) {
-  const [sources, workerAlive] = await Promise.all([
+  const [sources, workerAlive, portalOn] = await Promise.all([
     prisma.knowledgeSource.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -29,6 +35,7 @@ export default async function KnowledgePage({
       },
     }),
     workerLooksAlive(),
+    portalEnabled(),
   ]);
 
   const anyPending = sources.some((s) =>
@@ -102,6 +109,56 @@ export default async function KnowledgePage({
           </SubmitButton>
         </div>
       </form>
+
+      <section className="card space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">
+              Watch a Tagetik page
+            </h2>
+            <p className="text-xs text-slate-500">
+              Sign in once with <code>npm run portal:login</code> — your password
+              never reaches Beacon. Re-checking a page that hasn&apos;t changed
+              costs nothing, so it is cheap to watch often.
+            </p>
+          </div>
+          <form action={togglePortal}>
+            <input type="hidden" name="on" value={portalOn ? "false" : "true"} />
+            <button
+              type="submit"
+              className={`chip ${portalOn ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"}`}
+            >
+              {portalOn ? "Portal access: on" : "Portal access: off"}
+            </button>
+          </form>
+        </div>
+
+        {!portalOn && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            Switching this on confirms that automated access is permitted under
+            your agreement with Wolters Kluwer. Nothing is fetched until it is on.
+          </p>
+        )}
+
+        <form action={submitPage} className="space-y-2">
+          <div className="flex items-end gap-2">
+            <input
+              name="url"
+              type="url"
+              placeholder="https://…tagetik.com/release-notes"
+              className="field"
+              required
+            />
+            <SubmitButton className="whitespace-nowrap" pendingLabel="Queueing…">
+              Watch page
+            </SubmitButton>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" name="dryRun" defaultChecked />
+            Dry run first — show what it would read, store nothing
+          </label>
+        </form>
+      </section>
 
       {sources.length === 0 ? (
         <p className="card text-sm text-slate-500">

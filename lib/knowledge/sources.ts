@@ -183,3 +183,54 @@ export async function enqueueDocument(
 
   return { ok: true, sourceId: source.id, created: !existing };
 }
+
+// Watch a portal page. The URL is checked against the allowlist here, so an
+// off-limits address never even becomes a source.
+export async function enqueuePage(
+  rawUrl: string,
+  { dryRun = true }: { dryRun?: boolean } = {},
+): Promise<EnqueueResult> {
+  const { checkUrl } = await import("@/lib/portal/allowlist");
+  const verdict = checkUrl(rawUrl);
+  if (!verdict.ok) return { ok: false, error: verdict.reason };
+
+  const url = verdict.url.toString();
+  const externalId = url.replace(/^https:\/\//, "").slice(0, 200);
+
+  const existing = await prisma.knowledgeSource.findUnique({
+    where: {
+      provider_externalId_ownerId: {
+        provider: "portal",
+        externalId,
+        ownerId: "me",
+      },
+    },
+  });
+
+  const source =
+    existing ??
+    (await prisma.knowledgeSource.create({
+      data: {
+        provider: "portal",
+        kind: "page",
+        externalId,
+        canonicalUrl: url,
+        title: verdict.url.pathname,
+      },
+    }));
+
+  const active = await prisma.researchJob.findFirst({
+    where: { sourceId: source.id, state: { in: ["queued", "running", "retry_wait"] } },
+  });
+  if (!active) {
+    await prisma.researchJob.create({
+      data: {
+        sourceId: source.id,
+        kind: dryRun ? "page_dry" : "page",
+        stage: "fetch",
+      },
+    });
+  }
+
+  return { ok: true, sourceId: source.id, created: !existing };
+}

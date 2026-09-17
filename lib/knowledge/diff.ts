@@ -38,16 +38,29 @@ export function normalise(text: string): string {
     .toLowerCase();
 }
 
+// Words for comparison purposes, with punctuation stripped: "paragraph." and
+// "paragraph," are the same word, and counting them as different was enough to
+// make a lightly-edited sentence read as an unrelated replacement.
+function tokens(text: string): Set<string> {
+  return new Set(
+    text
+      .split(/[^\p{L}\p{N}]+/u)
+      .map((w) => w.trim())
+      .filter(Boolean),
+  );
+}
+
 // Similar enough to be "the same paragraph, reworded" rather than two unrelated
-// paragraphs? Compared on word overlap, which is cheap and good enough to tell
-// an edit from a replacement.
+// paragraphs? Dice coefficient — 2×shared / total — rather than dividing by the
+// longer side, which punished an added clause so heavily that "X." vs "X, and
+// now some more" scored below the threshold and split into add + remove.
 function similarity(a: string, b: string): number {
-  const wordsA = new Set(a.split(" ").filter(Boolean));
-  const wordsB = new Set(b.split(" ").filter(Boolean));
+  const wordsA = tokens(a);
+  const wordsB = tokens(b);
   if (wordsA.size === 0 || wordsB.size === 0) return 0;
   let shared = 0;
   for (const w of wordsA) if (wordsB.has(w)) shared++;
-  return shared / Math.max(wordsA.size, wordsB.size);
+  return (2 * shared) / (wordsA.size + wordsB.size);
 }
 
 const REWORDED_THRESHOLD = 0.5;

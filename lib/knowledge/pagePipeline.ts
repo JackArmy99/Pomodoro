@@ -1,0 +1,238 @@
+import type { PrismaClient } from "@prisma/client";
+import { splitParagraphs } from "@/lib/knowledge/documents";
+import { diffVersions, type DiffSegment } from "@/lib/knowledge/diff";
+import { createReader, Blocked, CapReached, type FetchLogEntry } from "@/lib/portal/fetch";
+import { portalEnabled } from "@/lib/portal/enabled";
+import { hasProfile } from "@/lib/portal/session";
+import { createHash } from "node:crypto";
+
+// ---------------------------------------------------------------------------
+// Watching a portal page. A watched page is a document that edits itself, so
+// this mirrors documentPipeline.ts and reuses the same diff.
+//
+// Stages: fetch -> store -> compare -> published. No model call anywhere —
+// re-checking a release-notes page that hasn't changed costs nothing at all,
+// which is what makes it reasonable to check often.
+// ---------------------------------------------------------------------------
+
+export const PAGE_STAGES = ["fetch", "store", "compare", "published"] as const;
+
+type Ctx = {
+  prisma: PrismaClient;
+  job: { id: string; sourceId: string; stage: string; kind?: string };
+  workerId: string;
+  // Injected so the whole pipeline is testable with a fake browser.
+  openBrowser?: () => Promise<{
+    ctx: any;
+    signedOut(): Promise<boolean>;
+    close(): Promise<void>;
+  }>;
+};
+
+async function setStage(prisma: PrismaClient, jobId: string, stage: string) {
+  await prisma.researchJob.update({ where: { id: jobId }, data: { stage } });
+}
+
+async function finish(
+  prisma: PrismaClient,
+  jobId: string,
+  state: "succeeded" | "failed" | "needs_input",
+  log: FetchLogEntry[],
+  error?: { code: string; message: string },
+) {
+  await prisma.researchJob.update({
+    where: { id: jobId },
+    data: {
+      state,
+      finishedAt: new Date(),
+      // The audit trail: every URL touched, with its outcome.
+      detail: log.length ? JSON.stringify(log) : null,
+      errorCode: error?.code ?? null,
+      errorMessage: error?.message?.slice(0, 300) ?? null,
+    },
+  });
+}
+
+export async function runPageJob(ctx: Ctx): Promise<void> {
+  const { prisma, job } = ctx;
+  const dryRun = job.kind === "page_dry";
+
+  const source = await prisma.knowledgeSource.findUnique({
+    where: { id: job.sourceId },
+  });
+  if (!source) {
+    await finish(prisma, job.id, "failed", [], {
+      code: "source_missing",
+      message: "Source record is gone.",
+    });
+    return;
+  }
+
+  // The gate, before anything opens a browser.
+  if (!(await portalEnabled())) {
+    await finish(prisma, job.id, "needs_input", [], {
+      code: "portal_disabled",
+      message:
+        "Portal access is switched off. Turn it on from the Knowledge page to confirm automated access is permitted.",
+    });
+    return;
+  }
+
+  if (!hasProfile()) {
+    await finish(prisma, job.id, "needs_input", [], {
+      code: "no_session",
+      message: "No saved portal session. Run: npm run portal:login",
+    });
+    return;
+  }
+
+  await setStage(prisma, job.id, "fetch");
+
+  let browser;
+  try {
+    browser = await (ctx.openBrowser
+      ? ctx.openBrowser()
+      : import("@/lib/portal/browser").then((m) => m.openBrowser()));
+  } catch (err: any) {
+    await finish(prisma, job.id, "needs_input", [], {
+      code: "no_browser",
+      message: String(err?.message ?? err),
+    });
+    return;
+  }
+
+  const reader = createReader(browser.ctx, { dryRun });
+
+  try {
+    const page = await reader.read(source.canonicalUrl);
+
+    if (dryRun) {
+      // A dry run proves access and shows intent without retrieving anything.
+      await finish(prisma, job.id, "needs_input", reader.log, {
+        code: "dry_run",
+        message:
+          "Dry run: nothing was retrieved. Untick 'dry run' to store the page.",
+      });
+      return;
+    }
+
+    if (!page) {
+      const why = reader.log[reader.log.length - 1];
+      await finish(prisma, job.id, "needs_input", reader.log, {
+        code: why?.outcome === "refused" ? "refused" : "fetch_failed",
+        message: why?.note ?? "The page could not be read.",
+      });
+      return;
+    }
+
+    if (await browser.signedOut()) {
+      await finish(prisma, job.id, "needs_input", reader.log, {
+        code: "session_expired",
+        message: "The portal session has expired. Run: npm run portal:login",
+      });
+      return;
+    }
+
+    // ---- store ------------------------------------------------------------
+    await setStage(prisma, job.id, "store");
+    const paragraphs = splitParagraphs(page.text);
+    if (paragraphs.length === 0) {
+      await finish(prisma, job.id, "needs_input", reader.log, {
+        code: "no_text",
+        message: "That page had no readable text.",
+      });
+      return;
+    }
+
+    const hash = createHash("sha256").update(paragraphs.join("\n")).digest("hex");
+    const identical = await prisma.sourceVersion.findFirst({
+      where: { sourceId: source.id, contentHash: hash },
+    });
+
+    if (identical) {
+      // Unchanged: no new version, nothing stored, nothing spent. This is the
+      // case most checks land in, and it is why checking often is affordable.
+      await prisma.knowledgeSource.update({
+        where: { id: source.id },
+        data: { currentVersionId: identical.id },
+      });
+      await setStage(prisma, job.id, "published");
+      await finish(prisma, job.id, "succeeded", reader.log);
+      return;
+    }
+
+    const previousId = source.currentVersionId;
+    const count = await prisma.sourceVersion.count({ where: { sourceId: source.id } });
+    const version = await prisma.sourceVersion.create({
+      data: {
+        sourceId: source.id,
+        version: count + 1,
+        transcriptMethod: "manual_import",
+        coverageStatus: "complete",
+        contentHash: hash,
+        limitations: "Visible page text only; the citation is the URL.",
+      },
+    });
+
+    await prisma.transcriptSegment.createMany({
+      data: paragraphs.map((text, i) => ({
+        sourceVersionId: version.id,
+        ordinal: i,
+        startMs: 0,
+        endMs: 0,
+        page: null,
+        text,
+      })),
+    });
+
+    await prisma.knowledgeSource.update({
+      where: { id: source.id },
+      data: { currentVersionId: version.id, title: page.title || source.title },
+    });
+
+    // ---- compare ----------------------------------------------------------
+    await setStage(prisma, job.id, "compare");
+    if (previousId) {
+      const before = await prisma.transcriptSegment.findMany({
+        where: { sourceVersionId: previousId },
+        orderBy: { ordinal: "asc" },
+        select: { ordinal: true, page: true, text: true },
+      });
+      const after: DiffSegment[] = paragraphs.map((text, i) => ({
+        ordinal: i,
+        page: null,
+        text,
+      }));
+      const result = diffVersions(before as DiffSegment[], after);
+      await prisma.analysisRevision.create({
+        data: {
+          sourceVersionId: version.id,
+          pipelineVersion: "diff",
+          status: "published",
+          summaryJson: JSON.stringify({
+            previousVersionId: previousId,
+            changes: result.changes,
+          }),
+          coverageJson: JSON.stringify({
+            unchanged: result.unchanged,
+            changed: result.changes.length,
+            changedChars: result.changedChars,
+          }),
+        },
+      });
+    }
+
+    await setStage(prisma, job.id, "published");
+    await finish(prisma, job.id, "succeeded", reader.log);
+  } catch (err: any) {
+    // Being blocked or hitting the cap are deliberate stops, not crashes.
+    const blocked = err instanceof Blocked;
+    const capped = err instanceof CapReached;
+    await finish(prisma, job.id, "needs_input", reader.log, {
+      code: blocked ? "blocked" : capped ? "page_cap" : "error",
+      message: String(err?.message ?? err),
+    });
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}

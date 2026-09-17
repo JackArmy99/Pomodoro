@@ -5,6 +5,7 @@ import {
   retrySource,
   cancelSourceJob,
   summariseSource,
+  recheckPage,
 } from "@/app/actions/knowledge";
 import SubmitButton from "@/components/SubmitButton";
 import AutoRefresh from "@/components/AutoRefresh";
@@ -99,6 +100,14 @@ export default async function KnowledgeSourcePage({
   const segmentStarts = new Map(citedSegments.map((s) => [s.ordinal, s.startMs]));
 
   const isDocument = source.kind === "document";
+  const isPage = source.kind === "page";
+  // The audit trail of every URL this run touched.
+  let fetchLog: any[] = [];
+  try {
+    if (job?.detail) fetchLog = JSON.parse(job.detail);
+  } catch {
+    fetchLog = [];
+  }
 
   // Documents record a diff against the previous version — computed locally, so
   // it exists whether or not anyone ever pays to have it explained.
@@ -240,16 +249,17 @@ export default async function KnowledgeSourcePage({
 
       {/* What changed — for documents this is computed locally, so it is free
           and available on every re-import. */}
-      {isDocument && (
+      {(isDocument || isPage) && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-slate-900">
             What changed in this version
           </h2>
           {!diffRevision ? (
             <p className="card text-sm text-slate-500">
-              This is the first version, so there is nothing to compare against.
-              Upload a newer file with the same name and the changes will appear
-              here.
+              This is the first version, so there is nothing to compare
+              against. {isPage
+                ? "Re-check the page later and the changes will appear here."
+                : "Upload a newer file with the same name and the changes will appear here."}
             </p>
           ) : changes.length === 0 ? (
             <p className="card text-sm text-slate-500">
@@ -482,6 +492,51 @@ export default async function KnowledgeSourcePage({
           </>
         )}
       </section>
+
+      {isPage && (
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">
+              Pages this run touched
+            </h2>
+            {!pending && (
+              <form action={recheckPage}>
+                <input type="hidden" name="sourceId" value={source.id} />
+                <SubmitButton pendingLabel="Queueing…">
+                  Check for changes
+                </SubmitButton>
+              </form>
+            )}
+          </div>
+          {fetchLog.length === 0 ? (
+            <p className="card text-sm text-slate-500">
+              Nothing fetched yet.
+            </p>
+          ) : (
+            <ul className="card space-y-1 text-xs">
+              {fetchLog.map((entry: any, i: number) => (
+                <li key={i} className="flex flex-wrap gap-2">
+                  <span
+                    className={
+                      entry.outcome === "fetched"
+                        ? "text-emerald-700"
+                        : entry.outcome === "would-fetch"
+                          ? "text-slate-500"
+                          : "text-amber-700"
+                    }
+                  >
+                    {entry.outcome}
+                  </span>
+                  <span className="text-slate-600">{entry.url}</span>
+                  {entry.note && (
+                    <span className="text-slate-400">— {entry.note}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">Processing details</h2>

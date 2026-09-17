@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   enqueueVideo,
   enqueueDocument,
+  enqueuePage,
   requeueSource,
   cancelJob,
   enqueueAnalysis,
@@ -66,4 +67,43 @@ export async function submitDocument(formData: FormData) {
 
   revalidatePath("/knowledge");
   redirect(`/knowledge/${result.sourceId}`);
+}
+
+// Watch a portal page. Dry run is the default: it proves access and shows what
+// it would read, without retrieving anything.
+export async function submitPage(formData: FormData) {
+  const url = String(formData.get("url") ?? "").trim();
+  if (!url) return;
+  const dryRun = String(formData.get("dryRun") ?? "") === "on";
+
+  const result = await enqueuePage(url, { dryRun });
+  if (!result.ok) {
+    redirect(`/knowledge?error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath("/knowledge");
+  redirect(`/knowledge/${result.sourceId}`);
+}
+
+// Re-check a watched page. Unchanged pages cost nothing, so this is cheap to
+// run often.
+export async function recheckPage(formData: FormData) {
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) return;
+  const { prisma } = await import("@/lib/db");
+  const source = await prisma.knowledgeSource.findUnique({ where: { id: sourceId } });
+  if (!source) return;
+  const result = await enqueuePage(source.canonicalUrl, { dryRun: false });
+  if (!result.ok) {
+    redirect(`/knowledge/${sourceId}?error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath(`/knowledge/${sourceId}`);
+}
+
+// The permission record. Ticking this is the confirmation that automated access
+// is allowed under the Wolters Kluwer agreement.
+export async function togglePortal(formData: FormData) {
+  const on = String(formData.get("on") ?? "") === "true";
+  const { setPortalEnabled } = await import("@/lib/portal/enabled");
+  await setPortalEnabled(on);
+  revalidatePath("/knowledge");
 }
