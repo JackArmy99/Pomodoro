@@ -9,6 +9,7 @@ import {
   setTestMode,
 } from "@/app/actions/agents";
 import SubmitButton from "@/components/SubmitButton";
+import AutoRefresh from "@/components/AutoRefresh";
 import { RELEVANCE_STYLES } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -43,11 +44,16 @@ export default async function AgentsPage() {
   const lastRun = new Map<string, (typeof runs)[number]>();
   for (const r of runs) if (!lastRun.has(r.agentId)) lastRun.set(r.agentId, r);
 
+  // An agent run is a background job like a video job, so the page should show
+  // its progress rather than asking to be refreshed.
+  const anyRunning = runs.some((r) => r.status === "running");
+
   const needsAttention = pending.filter((f) => f.relevance === "high").slice(0, 6);
   const totalCost = costAgg._sum.estCostCents ?? 0;
 
   return (
     <div className="space-y-8">
+      <AutoRefresh active={anyRunning} />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Agents</h1>
@@ -57,7 +63,7 @@ export default async function AgentsPage() {
           </p>
           <p className="mt-1 text-xs text-slate-400">
             Runs happen in the background and can take a minute or two — the card
-            shows “Running…”. Refresh to see findings as they land.
+            shows “Running…”, and this page updates itself as findings land.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
