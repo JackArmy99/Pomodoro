@@ -43,6 +43,10 @@ npm run db:check  # verify stored values still match the schema
 npm run stop      # kill anything Beacon left running (frees the engine file)
 npm run test:video # free, no-API gate for the video pipeline
 npm run test:docs  # free, no-API gate for document import + change detection
+npm run test:portal # free, no-network gate for the portal guardrails
+npm run portal:setup # one-off: installs Playwright + Chromium (~300MB)
+npm run portal:login # YOU sign in, in a real browser; the session is reused
+npm run portal:check # is the saved portal session still valid?
 ```
 Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 `.env` is git-ignored and auto-created from `.env.example` (predev/presetup).
@@ -79,12 +83,11 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
   approve fan-out).
 - `/briefs`, `/briefs/[id]` — briefs + "who's affected".
 - `/opportunities` — pipeline + categories.
-- `/knowledge`, `/knowledge/[id]` — videos AND documents. A document (PDF/Word)
-  is stored paragraph by paragraph with its page number, and a re-upload under
-  the same file name becomes a new version showing exactly what changed.
-- `/knowledge`, `/knowledge/[id]` — videos Beacon has read: full timestamped
-  transcript plus a cited summary (key points ranked by importance, each linking
-  to that second of the video) and the linked inbox item.
+- `/knowledge`, `/knowledge/[id]` — videos AND documents. A video shows its full
+  timestamped transcript plus a cited summary (each point linking to that second
+  of the video). A document (PDF/Word) is stored paragraph by paragraph with its
+  page number, and a re-upload under the same file name becomes a new version
+  showing exactly what changed. Both link to their inbox item.
 - `/clients`, `/clients/[id]`, `/modules`, `/modules/[id]`.
 
 ## Research engine (lib/research/)
@@ -200,6 +203,19 @@ confident-but-wrong AI specifics reaching a client.
 - Run **`npm run test:video`** and **`npm run test:docs`** before touching either
   pipeline — a throwaway
   database, no model calls, so it is free.
+- **The portal agent's limits are code, not prompts.** `lib/portal/allowlist.ts`
+  is a hard host boundary (https only, no credentials in URLs, lookalike hosts
+  refused) and can only be widened via `PORTAL_ALLOWED_HOSTS` in `.env` — never
+  from inside the app, so nothing the agent reads can extend its own reach.
+  `lib/portal/fetch.ts` paces, caps, logs every URL, and **aborts on 429/403**:
+  being blocked is an answer, not an obstacle. Never add CAPTCHA solving,
+  stealth plugins, proxy rotation or user-agent spoofing.
+- **Beacon never stores a portal password.** `npm run portal:login` opens a real
+  browser, Jack signs in himself, and the session is reused from
+  `storage/portal-profile/`. Keeps working if the portal adds SSO or 2FA.
+- **Playwright is an OPTIONAL dependency** (~300MB), declared in
+  `types/playwright.d.ts` and loaded dynamically, so nobody who never touches
+  the portal pays for it. `npm run portal:setup` installs it.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next
