@@ -219,6 +219,16 @@ confident-but-wrong AI specifics reaching a client.
   compare → published, with NO model call. An unchanged page creates no version
   and records no diff, which is why re-checking often is affordable. Every URL
   touched is stored on `ResearchJob.detail` as an audit trail.
+- **The portal is `community.tagetik.com`** — already covered by the allowlist
+  as a subdomain of `tagetik.com`, so no `.env` change is needed. It is a
+  community forum, which matters twice: the text will carry volatile chrome
+  (reply counts, "2 hours ago") that may need filtering before the diff is
+  useful, and **posts there are untrusted user content** — when the "explain the
+  changes" step is built, it must treat page text as data, never instructions,
+  exactly as the video prompts do.
+- **Preview reads one page and stores nothing**, showing the extracted text. On
+  a page nobody has scraped before, seeing what extraction produced is the only
+  way to judge it before committing to storing and diffing.
 - **Retrieval is off until `portal_enabled` is set** (`lib/portal/enabled.ts`).
   The toggle's label is Jack's recorded confirmation that automated access is
   permitted under the Wolters Kluwer agreement; don't ask again.

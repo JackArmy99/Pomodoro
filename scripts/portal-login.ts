@@ -10,7 +10,7 @@ import { checkUrl } from "../lib/portal/allowlist";
 import { openContext, PROFILE_DIR } from "../lib/portal/session";
 
 const url =
-  process.argv[2] || process.env.PORTAL_START_URL || "https://www.tagetik.com";
+  process.argv[2] || process.env.PORTAL_START_URL || "https://community.tagetik.com/";
 
 async function main() {
   // The same allowlist the agent uses — one copy, so the two can never drift.

@@ -180,19 +180,25 @@ async function pipelineGuards() {
 
   await setPortalEnabled(true);
 
-  // 2. Dry run retrieves nothing.
+  // 2. Preview reads the page but stores nothing — you have to be able to SEE
+  //    the extracted text to judge it before committing.
   const dry = await run("page_dry");
-  check("a dry run stores nothing", dry?.errorCode === "dry_run");
-  check("a dry run creates no version",
+  check("a preview stores nothing", dry?.errorCode === "preview");
+  check("a preview creates no version",
     (await prisma.sourceVersion.count({ where: { sourceId: source.id } })) === 0);
-  check("a dry run still logs its intent", Boolean(dry?.detail));
+  const previewDetail = JSON.parse(dry?.detail ?? "{}");
+  check("a preview shows the extracted text",
+    String(previewDetail.preview?.textSample ?? "").includes("First paragraph"));
+  check("a preview counts the paragraphs", previewDetail.preview?.paragraphs === 2);
+  check("a preview is still logged for audit", (previewDetail.log ?? []).length > 0);
 
   // 3. A real run stores the page.
   const first = await run("page");
   check("a real run succeeds", first?.state === "succeeded", String(first?.errorCode ?? ""));
   check("the page is stored as a version",
     (await prisma.sourceVersion.count({ where: { sourceId: source.id } })) === 1);
-  check("every URL is logged for audit", Boolean(first?.detail) && first!.detail!.includes("fetched"));
+  check("every URL is logged for audit",
+    (JSON.parse(first?.detail ?? "{}").log ?? []).some((e: any) => e.outcome === "fetched"));
   check("no model spend", (first?.spentMicroUsd ?? 0) === 0);
 
   // 4. An unchanged page costs nothing and creates nothing.

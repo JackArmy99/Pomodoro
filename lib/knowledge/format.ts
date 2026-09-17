@@ -69,8 +69,8 @@ export function errorAdvice(code: string | null, message: string | null): string
       return "No saved portal session yet. Run:  npm run portal:login";
     case "session_expired":
       return "The portal session has expired. Run:  npm run portal:login";
-    case "dry_run":
-      return "Dry run — nothing was retrieved. The pages it would read are listed below. Untick 'dry run' to store the page.";
+    case "preview":
+      return "Preview only — the page was read but nothing was stored. Check the extracted text below looks right, then untick 'preview' to store it.";
     case "blocked":
       return message ?? "The portal pushed back, so the run stopped rather than trying to get around it.";
     case "page_cap":

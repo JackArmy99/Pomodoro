@@ -33,20 +33,24 @@ async function setStage(prisma: PrismaClient, jobId: string, stage: string) {
   await prisma.researchJob.update({ where: { id: jobId }, data: { stage } });
 }
 
+type Preview = { title: string; textSample: string; paragraphs: number; links: string[] };
+
 async function finish(
   prisma: PrismaClient,
   jobId: string,
   state: "succeeded" | "failed" | "needs_input",
   log: FetchLogEntry[],
   error?: { code: string; message: string },
+  preview?: Preview,
 ) {
   await prisma.researchJob.update({
     where: { id: jobId },
     data: {
       state,
       finishedAt: new Date(),
-      // The audit trail: every URL touched, with its outcome.
-      detail: log.length ? JSON.stringify(log) : null,
+      // The audit trail: every URL touched, with its outcome — plus, for a
+      // preview, what the page actually looked like once extracted.
+      detail: log.length || preview ? JSON.stringify({ log, preview }) : null,
       errorCode: error?.code ?? null,
       errorMessage: error?.message?.slice(0, 300) ?? null,
     },
@@ -101,18 +105,37 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
     return;
   }
 
-  const reader = createReader(browser.ctx, { dryRun });
+  // A preview reads ONE page — the same single page view you would do by hand —
+  // and stores nothing. Showing the extracted text is the entire point: on an
+  // unfamiliar page it is the only way to know whether the extraction is any
+  // good before committing to storing and diffing it.
+  const reader = createReader(browser.ctx, { cap: dryRun ? 1 : undefined });
 
   try {
     const page = await reader.read(source.canonicalUrl);
 
     if (dryRun) {
-      // A dry run proves access and shows intent without retrieving anything.
-      await finish(prisma, job.id, "needs_input", reader.log, {
-        code: "dry_run",
-        message:
-          "Dry run: nothing was retrieved. Untick 'dry run' to store the page.",
-      });
+      const paragraphs = page ? splitParagraphs(page.text) : [];
+      await finish(
+        prisma,
+        job.id,
+        "needs_input",
+        reader.log,
+        {
+          code: "preview",
+          message: page
+            ? `Preview only — nothing was stored. Extracted ${paragraphs.length} paragraphs.`
+            : "Preview: the page could not be read.",
+        },
+        page
+          ? {
+              title: page.title,
+              textSample: paragraphs.slice(0, 40).join("\n\n").slice(0, 8000),
+              paragraphs: paragraphs.length,
+              links: page.links.slice(0, 40),
+            }
+          : undefined,
+      );
       return;
     }
 

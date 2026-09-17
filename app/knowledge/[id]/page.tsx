@@ -103,8 +103,14 @@ export default async function KnowledgeSourcePage({
   const isPage = source.kind === "page";
   // The audit trail of every URL this run touched.
   let fetchLog: any[] = [];
+  let preview: any = null;
   try {
-    if (job?.detail) fetchLog = JSON.parse(job.detail);
+    if (job?.detail) {
+      const parsed = JSON.parse(job.detail);
+      // Older runs stored a bare array; newer ones store { log, preview }.
+      fetchLog = Array.isArray(parsed) ? parsed : (parsed.log ?? []);
+      preview = Array.isArray(parsed) ? null : (parsed.preview ?? null);
+    }
   } catch {
     fetchLog = [];
   }
@@ -492,6 +498,40 @@ export default async function KnowledgeSourcePage({
           </>
         )}
       </section>
+
+      {/* A preview shows exactly what would be stored, without storing it —
+          the only way to judge extraction on a page you've never scraped. */}
+      {isPage && preview && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-900">
+            Preview — what it read (nothing was stored)
+          </h2>
+          <div className="card space-y-2">
+            <p className="text-sm font-semibold text-slate-900">{preview.title}</p>
+            <p className="text-xs text-slate-500">
+              {preview.paragraphs} paragraphs found
+              {preview.links?.length
+                ? ` · ${preview.links.length} links it could follow`
+                : ""}
+            </p>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs text-slate-700">
+              {preview.textSample}
+            </pre>
+            {preview.links?.length > 0 && (
+              <details className="text-xs text-slate-500">
+                <summary className="cursor-pointer">Links on this page</summary>
+                <ul className="mt-1 space-y-0.5">
+                  {preview.links.map((l: string) => (
+                    <li key={l} className="truncate">
+                      {l}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        </section>
+      )}
 
       {isPage && (
         <section className="space-y-2">

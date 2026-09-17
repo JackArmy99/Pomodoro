@@ -145,7 +145,7 @@ export default async function KnowledgePage({
             <input
               name="url"
               type="url"
-              placeholder="https://…tagetik.com/release-notes"
+              placeholder="https://community.tagetik.com/…"
               className="field"
               required
             />
@@ -155,7 +155,7 @@ export default async function KnowledgePage({
           </div>
           <label className="flex items-center gap-2 text-xs text-slate-600">
             <input type="checkbox" name="dryRun" defaultChecked />
-            Dry run first — show what it would read, store nothing
+            Preview first — read the page and show the text, store nothing
           </label>
         </form>
       </section>
