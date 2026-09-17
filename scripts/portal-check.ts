@@ -2,22 +2,19 @@
 //
 // Fetches one page and reports what it sees. Retrieves nothing else and stores
 // nothing — this exists so "is it signed in?" never has to be guessed at.
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { checkUrl } from "../lib/portal/allowlist";
+import { hasProfile, openContext } from "../lib/portal/session";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const url =
   process.argv[2] || process.env.PORTAL_START_URL || "https://www.tagetik.com";
 
 async function main() {
-  const { checkUrl } = await import("../lib/portal/allowlist.ts");
   const verdict = checkUrl(url);
   if (!verdict.ok) {
     console.error(`❌ ${verdict.reason}`);
     process.exit(1);
   }
 
-  const { hasProfile, openContext } = await import("../lib/portal/session.ts");
   if (!hasProfile()) {
     console.log("No saved session yet. Run:  npm run portal:login");
     process.exit(1);

@@ -6,8 +6,8 @@
 // locally so later runs can reuse it. Nothing about the sign-in is automated,
 // which is what keeps this working if the portal ever adds SSO or 2FA.
 import { createInterface } from "node:readline";
-import { checkUrl } from "../lib/portal/allowlist.ts";
-import { openContext, PROFILE_DIR } from "../lib/portal/session.ts";
+import { checkUrl } from "../lib/portal/allowlist";
+import { openContext, PROFILE_DIR } from "../lib/portal/session";
 
 const url =
   process.argv[2] || process.env.PORTAL_START_URL || "https://www.tagetik.com";

@@ -3,7 +3,7 @@
 import { checkUrl, permittedLinks, allowedHosts } from "@/lib/portal/allowlist";
 import { createReader, Blocked, CapReached } from "@/lib/portal/fetch";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,30 @@ const check = (n: string, ok: boolean, d = "") => {
   console.log(`  ${ok ? "ok  " : "FAIL"} ${n}${d ? " — " + d : ""}`);
   if (!ok) bad++;
 };
+
+// A .mjs file is native ESM; Node resolves its named imports before tsx has
+// transformed the .ts module, so the bindings aren't there yet and it dies with
+// "does not provide an export named X". Dynamic imports happen to survive it,
+// which makes the failure look random and machine-dependent. Scripts that need
+// project code must be .ts.
+console.log("\nScript module boundaries");
+{
+  const scriptsDir = dirname(fileURLToPath(import.meta.url));
+  const offenders: string[] = [];
+  for (const name of readdirSync(scriptsDir)) {
+    if (!name.endsWith(".mjs")) continue;
+    const body = readFileSync(join(scriptsDir, name), "utf8");
+    // Static `import ... from "....ts"` only — a dynamic import() is fine.
+    if (/^\s*import\s[^;]*?from\s+["'][^"']+\.ts["']/m.test(body)) {
+      offenders.push(name);
+    }
+  }
+  check(
+    "no .mjs script statically imports a .ts module",
+    offenders.length === 0,
+    offenders.join(", "),
+  );
+}
 
 console.log("\nAllowlist");
 check("a tagetik page is allowed", checkUrl("https://www.tagetik.com/release-notes").ok);

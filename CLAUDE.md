@@ -45,6 +45,7 @@ npm run test:video # free, no-API gate for the video pipeline
 npm run test:docs  # free, no-API gate for document import + change detection
 npm run test:portal # free, no-network gate for the portal guardrails
 npm run portal:setup # one-off: installs Playwright + Chromium (~300MB)
+                     # if npm holds back install scripts: npm install-scripts approve <pkg>
 npm run portal:login # YOU sign in, in a real browser; the session is reused
 npm run portal:check # is the saved portal session still valid?
 ```
@@ -224,6 +225,16 @@ confident-but-wrong AI specifics reaching a client.
 - **`lib/portal/browser.ts` only adapts Playwright to the `Ctx` interface** that
   `fetch.ts` already defines — pacing, caps, logging and the 429/403 abort are
   tested against a fake browser and must stay that way.
+- **A `.mjs` script must never statically import a `.ts` module.** A `.mjs` file
+  is native ESM, so Node resolves its named imports before tsx has transformed
+  the `.ts` module — "does not provide an export named X", even though it does.
+  A *dynamic* `import()` happens to survive, which makes the failure look random
+  and Node-version-dependent. Scripts needing project code are `.ts`; `.mjs` is
+  for scripts that only touch Node builtins (`update`, `stop`, `dev-all`,
+  `db-check`, `fix-migrations`). `npm run test:portal` enforces this.
+- **`node --check` proves syntax, not that a script runs.** Execute new scripts
+  far enough to see their imports resolve — a missing-dependency message is
+  proof the module graph loaded; a clean `--check` is proof of nothing.
 - **Playwright is an OPTIONAL dependency** (~300MB), declared in
   `types/playwright.d.ts` and loaded dynamically, so nobody who never touches
   the portal pays for it. `npm run portal:setup` installs it.
