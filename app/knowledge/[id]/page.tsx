@@ -518,15 +518,21 @@ export default async function KnowledgeSourcePage({
               {preview.textSample}
             </pre>
             {preview.structure?.items?.length > 0 && (
-              <details className="text-xs text-slate-500">
-                <summary className="cursor-pointer">
-                  Repeating structure ({preview.structure.container?.childCount}{" "}
-                  items found) — paste this to Claude to build the parser
-                </summary>
-                <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2">
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                <p className="text-sm font-semibold text-indigo-900">
+                  Copy this and send it to Claude
+                </p>
+                <p className="mt-0.5 text-xs text-indigo-800">
+                  This is how the page is put together underneath — it found{" "}
+                  {preview.structure.container?.childCount} items in a list. Claude
+                  needs it to work out which part of each row is the title, the
+                  date and the download link. Select all of the box below, copy
+                  it, and paste it into the chat.
+                </p>
+                <pre className="mt-2 max-h-80 select-all overflow-auto whitespace-pre-wrap rounded border border-indigo-200 bg-white p-2 text-xs text-slate-700">
                   {JSON.stringify(preview.structure, null, 2)}
                 </pre>
-              </details>
+              </div>
             )}
             {preview.links?.length > 0 && (
               <details className="text-xs text-slate-500">
