@@ -47,7 +47,8 @@ npm run test:portal # free, no-network gate for the portal guardrails
 npm run portal:setup # one-off: installs Playwright + Chromium (~300MB)
                      # if npm holds back install scripts: npm install-scripts approve <pkg>
 npm run portal:login # YOU sign in, in a real browser; the session is reused
-npm run portal:check # is the saved portal session still valid?
+npm run portal:check # session valid? + how many passwords the profile holds
+npm run portal:forget # delete the saved session entirely
 ```
 Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 `.env` is git-ignored and auto-created from `.env.example` (predev/presetup).
@@ -211,7 +212,18 @@ confident-but-wrong AI specifics reaching a client.
   `lib/portal/fetch.ts` paces, caps, logs every URL, and **aborts on 429/403**:
   being blocked is an answer, not an obstacle. Never add CAPTCHA solving,
   stealth plugins, proxy rotation or user-agent spoofing.
-- **Beacon never stores a portal password.** `npm run portal:login` opens a real
+- **Beacon never stores a portal password** — but the profile is a real
+  Chromium profile, so `openContext()` writes `credentials_enable_service:false`
+  into its Preferences to stop the browser's OWN save-password prompt appearing.
+  `inspectProfile()` counts rows in Chromium's `Login Data` so `portal:check`
+  answers "is my password in there?" with a number, and `portal:forget` deletes
+  the lot. Assurance is not evidence; give the number.
+- **The Library is a LIST, so track items, not text.** Diffing the page text is
+  the wrong tool for a feed of 3,517 assets — dedupe on each item's link so
+  "what appeared today" is exact. The preview captures the page's repeating
+  structure (`browser.ts` `sample()`) precisely so a parser is written against
+  real markup rather than a guess.
+- **Beacon never stores a portal password (original note).** `npm run portal:login` opens a real
   browser, Jack signs in himself, and the session is reused from
   `storage/portal-profile/`. Keeps working if the portal adds SSO or 2FA.
 - **A watched portal page is a document that edits itself.**

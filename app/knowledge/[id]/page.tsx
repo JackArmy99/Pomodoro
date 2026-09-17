@@ -517,6 +517,17 @@ export default async function KnowledgeSourcePage({
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs text-slate-700">
               {preview.textSample}
             </pre>
+            {preview.structure?.items?.length > 0 && (
+              <details className="text-xs text-slate-500">
+                <summary className="cursor-pointer">
+                  Repeating structure ({preview.structure.container?.childCount}{" "}
+                  items found) — paste this to Claude to build the parser
+                </summary>
+                <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2">
+                  {JSON.stringify(preview.structure, null, 2)}
+                </pre>
+              </details>
+            )}
             {preview.links?.length > 0 && (
               <details className="text-xs text-slate-500">
                 <summary className="cursor-pointer">Links on this page</summary>

@@ -33,7 +33,15 @@ async function setStage(prisma: PrismaClient, jobId: string, stage: string) {
   await prisma.researchJob.update({ where: { id: jobId }, data: { stage } });
 }
 
-type Preview = { title: string; textSample: string; paragraphs: number; links: string[] };
+type Preview = {
+  title: string;
+  textSample: string;
+  paragraphs: number;
+  links: string[];
+  // The repeating structure of a listing page, so a parser can be written
+  // against the real markup instead of a guess.
+  structure?: unknown;
+};
 
 async function finish(
   prisma: PrismaClient,
@@ -133,6 +141,9 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
               textSample: paragraphs.slice(0, 40).join("\n\n").slice(0, 8000),
               paragraphs: paragraphs.length,
               links: page.links.slice(0, 40),
+              structure: (browser.ctx as any).sample
+                ? await (browser.ctx as any).sample().catch(() => null)
+                : null,
             }
           : undefined,
       );

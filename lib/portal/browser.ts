@@ -5,10 +5,22 @@ import { openContext } from "@/lib/portal/session";
 // so pacing, caps, logging and the 429/403 abort could be proven without a
 // browser — this adapter changes none of that, it just supplies real pages.
 
+export type StructureSample = {
+  container: { tag: string; className: string; childCount: number } | null;
+  items: {
+    tag: string;
+    className: string;
+    text: string;
+    links: { href: string; text: string }[];
+  }[];
+};
+
 export type BrowserSession = {
   ctx: {
     goto(url: string): Promise<{ status: number | null }>;
     content(): Promise<{ title: string; text: string; links: string[] }>;
+    // Optional: only a listing page needs its structure sampled.
+    sample?(): Promise<StructureSample>;
   };
   signedOut(): Promise<boolean>;
   close(): Promise<void>;
@@ -36,6 +48,60 @@ export async function openBrowser(): Promise<BrowserSession> {
             (a) => (a as HTMLAnchorElement).getAttribute("href") ?? "",
           );
           return { title: document.title ?? "", text, links };
+        });
+      },
+      // A listing page is a repeated structure, and a parser written against
+      // markup nobody has looked at is a scraper that breaks silently. This
+      // samples the repeating blocks so the parser can be written against what
+      // is really there.
+      async sample() {
+        return page.evaluate(() => {
+          // Find the element whose children look most like a list of items:
+          // several siblings, each containing a link and some text.
+          function score(el: Element): number {
+            const kids = Array.from(el.children);
+            if (kids.length < 3) return 0;
+            const withLinks = kids.filter(
+              (k) => k.querySelector("a[href]") && (k as HTMLElement).innerText?.trim(),
+            );
+            return withLinks.length >= 3 ? withLinks.length : 0;
+          }
+
+          let best: Element | null = null;
+          let bestScore = 0;
+          for (const el of Array.from(document.querySelectorAll("body *"))) {
+            const s = score(el);
+            if (s > bestScore) {
+              bestScore = s;
+              best = el;
+            }
+          }
+          if (!best) return { container: null, items: [] };
+
+          const items = Array.from(best.children)
+            .slice(0, 6)
+            .map((k) => {
+              const el = k as HTMLElement;
+              const anchors = Array.from(k.querySelectorAll("a[href]")).map((a) => ({
+                href: (a as HTMLAnchorElement).href,
+                text: (a as HTMLElement).innerText?.trim().slice(0, 120) ?? "",
+              }));
+              return {
+                className: el.className?.toString().slice(0, 200) ?? "",
+                tag: el.tagName.toLowerCase(),
+                text: el.innerText?.trim().slice(0, 600) ?? "",
+                links: anchors.slice(0, 6),
+              };
+            });
+
+          return {
+            container: {
+              tag: (best as HTMLElement).tagName.toLowerCase(),
+              className: (best as HTMLElement).className?.toString().slice(0, 200) ?? "",
+              childCount: best.children.length,
+            },
+            items,
+          };
         });
       },
     },

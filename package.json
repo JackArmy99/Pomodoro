@@ -31,6 +31,7 @@
     "portal:setup": "npm install playwright && npx playwright install chromium",
     "portal:login": "tsx scripts/portal-login.ts",
     "portal:check": "tsx scripts/portal-check.ts",
+    "portal:forget": "tsx scripts/portal-forget.ts",
     "predb:check": "node scripts/ensure-env.mjs",
     "db:check": "node scripts/db-check.mjs",
     "fix:migrations": "node scripts/fix-migrations.mjs",

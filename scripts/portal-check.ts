@@ -3,7 +3,7 @@
 // Fetches one page and reports what it sees. Retrieves nothing else and stores
 // nothing — this exists so "is it signed in?" never has to be guessed at.
 import { checkUrl } from "../lib/portal/allowlist";
-import { hasProfile, openContext } from "../lib/portal/session";
+import { hasProfile, openContext, inspectProfile, PROFILE_DIR } from "../lib/portal/session";
 
 const url =
   process.argv[2] || process.env.PORTAL_START_URL || "https://community.tagetik.com/";
@@ -20,6 +20,20 @@ async function main() {
     process.exit(1);
   }
 
+  // Answer "is my password in there?" with evidence, before anything else.
+  const profile = inspectProfile();
+  console.log(`\nProfile: ${PROFILE_DIR}`);
+  console.log(
+    profile.savedPasswords === null
+      ? "Saved passwords: couldn't read the browser's store (it may be locked)."
+      : `Saved passwords in this profile: ${profile.savedPasswords}`,
+  );
+  if (profile.savedPasswords && profile.savedPasswords > 0) {
+    console.log(
+      "   That's Chromium's own password manager, not Beacon. Clear it with:  npm run portal:forget",
+    );
+  }
+
   const context = await openContext({ headed: false });
   try {
     const page = context.pages()[0] ?? (await context.newPage());
@@ -29,8 +43,10 @@ async function main() {
     // A visible password box is the clearest sign we are looking at a login
     // page rather than the content behind it.
     const passwordBoxes = await page.locator('input[type="password"]:visible').count();
+    const cookies = await context.cookies();
 
-    console.log(`\nURL:    ${url}`);
+    console.log(`\nCookies stored: ${cookies.length}`);
+    console.log(`URL:    ${url}`);
     console.log(`Status: ${status}`);
     console.log(`Title:  ${title}`);
     console.log(
