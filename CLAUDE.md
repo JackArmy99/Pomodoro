@@ -140,10 +140,11 @@ confident-but-wrong AI specifics reaching a client.
   the next `npm run update` fails with an EPERM that traces back to nothing.
   Children are spawned `detached` and stopped with `process.kill(-pid)` (POSIX)
   or `taskkill /T /F` (Windows). Same reason `scripts/stop.mjs` matches
-  `next-server`, not just `next dev` — Next renames its own process. The updater refuses to start if
-  anything answers on port 3000, retries a locked `generate` twice, and explains
-  the lock in plain English. Prisma stays pinned at **5.22** — the advertised
-  8.x is a major release candidate; don't take the upgrade prompt.
+  `next-server`, not just `next dev` — Next renames its own process.
+- The updater refuses to start if anything answers on port 3000 or if the engine
+  file is locked, retries a locked `generate` twice, and explains the lock in
+  plain English. Prisma stays pinned at **5.22** — the advertised 8.x is a major
+  release candidate; don't take the upgrade prompt.
 - **A table-rebuild migration can silently corrupt data.** SQLite accepts a
   double-quoted identifier that matches no column as a *string literal*, so a
   generated `INSERT … SELECT "newCol"` run against a database that lacks that
@@ -169,6 +170,14 @@ confident-but-wrong AI specifics reaching a client.
 - **Extraction enumerates.** A video listing ten tips must produce ten points,
   each named, with what was actually said (names, numbers, settings). Points
   follow the video's order; `takeaways` carries the ranked view.
+- **Model replies are schema-constrained** (`output_config.format` with plain
+  JSON Schema — no zod). Free-prose JSON plus a hopeful brace-scan failed three
+  times on long replies. The scan and `coerceSummary()` stay as defence against
+  a *valid* reply with an unexpected shape, and a run falls back to
+  unconstrained JSON if the account rejects the parameter.
+- **Notes are always written in English**, whatever the source language;
+  transcripts are never translated — they stay the evidence, and the page shows
+  the spoken language when it isn't English.
 - **Video summaries cite transcript segments, and citations are enforced.** Any
   ordinal the model invents is stripped; a claim left with no real citation is
   dropped and recorded in `coverageJson` rather than shown with a timestamp that

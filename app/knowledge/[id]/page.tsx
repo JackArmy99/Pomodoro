@@ -7,6 +7,7 @@ import {
   summariseSource,
 } from "@/app/actions/knowledge";
 import SubmitButton from "@/components/SubmitButton";
+import AutoRefresh from "@/components/AutoRefresh";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
 import {
   JOB_STATE_LABELS,
@@ -112,6 +113,8 @@ export default async function KnowledgeSourcePage({
 
   return (
     <div className="space-y-6">
+      {/* While a job runs, the page updates itself. */}
+      <AutoRefresh active={pending} />
       <Link href="/knowledge" className="text-xs text-indigo-600 hover:underline">
         ← Knowledge
       </Link>
@@ -131,6 +134,13 @@ export default async function KnowledgeSourcePage({
               {version.transcriptMethod === "captions"
                 ? "From captions"
                 : "Imported text"}
+            </span>
+          )}
+          {/* Notes are always English; say so when the source isn't, so a
+              translated summary is never mistaken for the speaker's words. */}
+          {version?.language && !version.language.toLowerCase().startsWith("en") && (
+            <span className="chip border-violet-200 bg-violet-50 text-violet-700">
+              Spoken {version.language} · notes in English
             </span>
           )}
         </div>
@@ -180,8 +190,8 @@ export default async function KnowledgeSourcePage({
         <div className="card flex items-center justify-between gap-2">
           <p className="text-sm text-slate-600">
             {STAGE_LABELS[job.stage] ?? job.stage}
-            {job.attempt > 0 ? ` · attempt ${job.attempt + 1}` : ""}. Refresh to
-            see progress.
+            {job.attempt > 0 ? ` · attempt ${job.attempt + 1}` : ""}. This page
+            updates itself.
           </p>
           <form action={cancelSourceJob}>
             <input type="hidden" name="jobId" value={job.id} />

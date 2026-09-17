@@ -5,6 +5,7 @@ import { workerLooksAlive } from "@/lib/knowledge/sources";
 import { JOB_STATE_LABELS, JOB_STATE_STYLES } from "@/lib/knowledge/format";
 import { formatTimestamp } from "@/lib/research/video/youtube";
 import SubmitButton from "@/components/SubmitButton";
+import AutoRefresh from "@/components/AutoRefresh";
 import { formatDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ export default async function KnowledgePage({
 
   return (
     <div className="space-y-6">
+      <AutoRefresh active={anyPending} />
       <header>
         <h1 className="text-lg font-semibold text-slate-900">Knowledge</h1>
         <p className="text-sm text-slate-500">

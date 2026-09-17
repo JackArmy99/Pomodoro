@@ -18,6 +18,8 @@ import {
   coerceSummary,
   enforceCitations,
   splitIntoPasses,
+  EXTRACT_JSON_SCHEMA,
+  CLASSIFY_JSON_SCHEMA,
 } from "@/lib/research/video/summarise";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -86,6 +88,39 @@ function citationGuards() {
     }
   }
   check("malformed model replies survive coercion", true);
+
+  // The schema the API enforces and the shape the code reads must not drift:
+  // a field the model is never asked for is a field that never arrives.
+  const required = (EXTRACT_JSON_SCHEMA as any).required as string[];
+  for (const field of ["overview", "takeaways", "points", "steps", "limits"]) {
+    check(`schema requires \`${field}\``, required.includes(field));
+  }
+  const pointProps = Object.keys(
+    (EXTRACT_JSON_SCHEMA as any).properties.points.items.properties,
+  );
+  for (const field of ["heading", "detail", "segmentOrdinals"]) {
+    check(`schema point has \`${field}\``, pointProps.includes(field));
+  }
+  check(
+    "classify schema limits relevance to three values",
+    JSON.stringify((CLASSIFY_JSON_SCHEMA as any).properties.relevance.enum) ===
+      '["high","medium","low"]',
+  );
+  // A reply that satisfies the schema must survive coercion untouched.
+  const schemaShaped = coerceSummary({
+    overview: "o",
+    takeaways: ["t"],
+    points: [{ heading: "h", detail: "d", segmentOrdinals: [1] }],
+    steps: [{ text: "s", segmentOrdinals: [1] }],
+    limits: ["l"],
+  });
+  check(
+    "schema-shaped reply coerces cleanly",
+    schemaShaped.points[0].heading === "h" &&
+      schemaShaped.points[0].detail === "d" &&
+      schemaShaped.takeaways.length === 1 &&
+      schemaShaped.steps.length === 1,
+  );
 
   const many = Array.from({ length: 20000 }, (_, i) => ({ ...seg(i), text: "word ".repeat(12) }));
   check("ordinary video is one pass", splitIntoPasses(Array.from({ length: 902 }, (_, i) => seg(i))).length === 1);
