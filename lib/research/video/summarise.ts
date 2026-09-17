@@ -487,7 +487,16 @@ export async function summariseTranscript(input: {
 
     // One repair attempt if whole claims lost their evidence — the model gets
     // told exactly what was wrong rather than being asked to try again blindly.
-    if (checked.dropped.length > 0) {
+    //
+    // But a repair re-sends the WHOLE transcript and regenerates every note, so
+    // it costs about as much as the original pass. Paying that to rescue one
+    // point out of twenty is a bad trade, and the loss is recorded in coverage
+    // either way. So only repair when a meaningful share of the notes went.
+    const kept = checked.summary.points.length + checked.summary.steps.length;
+    const lost = checked.dropped.length;
+    const worthRepairing = lost >= 3 || lost > kept * 0.25;
+
+    if (lost > 0 && worthRepairing) {
       repaired = true;
       try {
         const min = Math.min(...valid);

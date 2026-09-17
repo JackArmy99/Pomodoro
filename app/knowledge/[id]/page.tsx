@@ -103,10 +103,15 @@ export default async function KnowledgeSourcePage({
     select: { id: true, status: true },
   });
 
-  const spent = await prisma.researchJob.aggregate({
+  // One cumulative number can't be reasoned about — a re-run looks like an
+  // expensive run. Break it down per run and per stage.
+  const allJobs = await prisma.researchJob.findMany({
     where: { sourceId: source.id },
-    _sum: { spentMicroUsd: true },
+    orderBy: { createdAt: "asc" },
+    include: { calls: { orderBy: { createdAt: "asc" } } },
   });
+  const totalMicroUsd = allJobs.reduce((n, j) => n + j.spentMicroUsd, 0);
+  const paidRuns = allJobs.filter((j) => j.spentMicroUsd > 0);
 
   const workerAlive = await workerLooksAlive();
   const pending = ["queued", "running", "retry_wait"].includes(job?.state ?? "");
@@ -385,9 +390,24 @@ export default async function KnowledgeSourcePage({
           {job && <li>Job state: {job.state} · stage {job.stage}</li>}
           {job?.finishedAt && <li>Finished: {formatDate(job.finishedAt)}</li>}
           <li>
-            Model cost so far: {formatPence(spent._sum.spentMicroUsd ?? 0)}{" "}
-            (estimate)
+            Model cost: <strong>{formatPence(totalMicroUsd)}</strong> in total
+            across {paidRuns.length} run{paidRuns.length === 1 ? "" : "s"}{" "}
+            (estimate). Each re-run is charged again — the total is for this
+            video, not this run.
           </li>
+          {paidRuns.map((j, i) => (
+            <li key={j.id} className="pl-3 text-slate-400">
+              Run {i + 1}: {formatPence(j.spentMicroUsd)}
+              {j.calls.length > 0 && (
+                <>
+                  {" — "}
+                  {j.calls
+                    .map((c) => `${c.stage} ${formatPence(c.costMicroUsd)}`)
+                    .join(" · ")}
+                </>
+              )}
+            </li>
+          ))}
           <li className="pt-1 text-slate-400">
             Speech evidence only — this version does not inspect the video
             picture, so on-screen-only detail is not captured.
