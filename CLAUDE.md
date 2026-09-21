@@ -267,6 +267,32 @@ confident-but-wrong AI specifics reaching a client.
 - **`node --check` proves syntax, not that a script runs.** Execute new scripts
   far enough to see their imports resolve — a missing-dependency message is
   proof the module graph loaded; a clean `--check` is proof of nothing.
+- **A job's kind is never left to the default.** `ResearchJob.kind` defaults to
+  `"video"`, and `requeueSource()` created jobs without one — so **Try again**
+  on a watched portal page produced a *video* job, and the worker's `if/else`
+  routing fell through to `runVideoJob`, which asked YouTube for captions for
+  `community.tagetik.com` and failed with `network_error`. Routing now lives in
+  `lib/knowledge/jobKinds.ts`: `retryKindFor(sourceKind)` picks the right job
+  kind, and `jobHandlerFor(jobKind, sourceKind)` refuses to hand a non-video
+  source to the video pipeline — it runs the source's own pipeline and records
+  the correction. Asserted in `npm run test:portal`.
+- **Every run records its steps, not just the stage it is on.** A single
+  `stage` column is useless the moment a run ends, when the question is where it
+  stopped and what it managed first. `lib/knowledge/runLog.ts` appends
+  `{stage, at, state, note}` to `ResearchJob.detail` (an existing nullable JSON
+  column — no migration); `closeRun()` in the worker's `finally` closes the last
+  step against the state actually reached, covering clean finishes, early
+  returns and crashes alike. **Record a step BEFORE the access gates** — a run
+  refused for permission or a missing session otherwise produced an empty
+  timeline, which is exactly when one is most wanted. Notes carry the number
+  that is the diagnosis ("47 paragraphs", "2 changes"). The page on screen shows
+  the **job kind** next to the steps, because a page being run as a video went
+  undiagnosed for a whole round with nothing on screen naming the pipeline.
+- **Anything writing `ResearchJob.detail` must MERGE.** `pagePipeline`'s
+  `finish()` used to replace the column with `{log, preview}`, which threw the
+  step list away at the end of a failed run. Use `mergeDetail()`; read with
+  `parseDetail()`, which copes with the wrapper object, the bare fetch-log array
+  older runs wrote, and nothing at all.
 - **`npm run update` used to silently uninstall Playwright.** The updater does
   `git restore package.json package-lock.json` (npm's scribbles block `git pull`)
   and then `npm install`, which prunes anything not in package.json. Because
@@ -323,6 +349,9 @@ confident-but-wrong AI specifics reaching a client.
   store → compare, no model call), preview that reports embeds and the hosts it
   may not follow, and **Assess → pending Finding** so a portal page reaches the
   inbox and the existing approve → opportunity flow.
+- Diagnosability: every run shows a step timeline with the job kind, times and
+  the step it stopped at; the retry mis-routing that caused a page to be fetched
+  as a YouTube video is fixed.
 - Next: **one webinar end to end** — preview
   `community.tagetik.com/library/wb-product-demo-…`, read what "Watch" points
   at, store it, assess it. That decides the video path: a YouTube/Vimeo embed

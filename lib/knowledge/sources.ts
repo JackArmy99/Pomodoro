@@ -64,12 +64,28 @@ async function enqueueIdentity(identity: VideoIdentity): Promise<EnqueueResult> 
 }
 
 // Re-run a source that failed or needs input.
+//
+// The kind MUST be set explicitly. `ResearchJob.kind` defaults to "video", so
+// omitting it turned every retry of a page or a document into a video job —
+// which is how "Try again" on a Tagetik page ended up asking YouTube for
+// captions and failing with a network error.
 export async function requeueSource(sourceId: string): Promise<void> {
+  const source = await prisma.knowledgeSource.findUnique({
+    where: { id: sourceId },
+    select: { kind: true },
+  });
+  if (!source) return;
+
   const active = await prisma.researchJob.findFirst({
     where: { sourceId, state: { in: ["queued", "running", "retry_wait"] } },
   });
   if (active) return;
-  await prisma.researchJob.create({ data: { sourceId } });
+
+  const { retryKindFor } = await import("@/lib/knowledge/jobKinds");
+  const kind = retryKindFor(source.kind);
+  await prisma.researchJob.create({
+    data: { sourceId, kind, stage: kind === "page" ? "fetch" : "validate" },
+  });
 }
 
 export async function cancelJob(jobId: string): Promise<void> {

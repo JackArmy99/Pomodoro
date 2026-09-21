@@ -15,6 +15,8 @@ import { runVideoJob } from "@/lib/research/video/pipeline";
 import { runDocumentJob } from "@/lib/knowledge/documentPipeline";
 import { runPageJob } from "@/lib/knowledge/pagePipeline";
 import { runPageAssessJob } from "@/lib/knowledge/assessPage";
+import { jobHandlerFor } from "@/lib/knowledge/jobKinds";
+import { closeRun, noteStep } from "@/lib/knowledge/runLog";
 
 const WORKER_ID = `${process.pid}-${randomUUID().slice(0, 8)}`;
 const LEASE_MS = 2 * 60 * 1000;
@@ -90,7 +92,7 @@ async function beatIdle() {
 }
 
 async function main() {
-  console.log(`[worker ${WORKER_ID}] ready — polling for video jobs`);
+  console.log(`[worker ${WORKER_ID}] ready — polling for jobs`);
   while (!shuttingDown) {
     await beatIdle();
     let job: Awaited<ReturnType<typeof claimJob>> = null;
@@ -108,13 +110,20 @@ async function main() {
     console.log(`[worker] job ${job.id} — ${job.source.canonicalUrl}`);
     const beat = startHeartbeat(job.id);
     try {
-      // A document import and a video run share the queue, the lease and the
-      // stage bookkeeping — only the stages themselves differ.
-      if (job.kind === "document") {
+      // Every kind of work shares the queue, the lease and the stage
+      // bookkeeping — only the stages differ. Routing is one decision, and it
+      // never falls through to "video" for something that isn't one.
+      const routing = jobHandlerFor(job.kind, job.source.kind);
+      if (routing.corrected) {
+        console.warn(`[worker] job ${job.id} — ${routing.corrected}`);
+        await noteStep(prisma, job.id, routing.corrected).catch(() => {});
+      }
+
+      if (routing.handler === "document") {
         await runDocumentJob({ prisma, job, workerId: WORKER_ID });
-      } else if (job.kind === "page" || job.kind === "page_dry") {
+      } else if (routing.handler === "page") {
         await runPageJob({ prisma, job, workerId: WORKER_ID });
-      } else if (job.kind === "page_assess") {
+      } else if (routing.handler === "page_assess") {
         await runPageAssessJob({ prisma, job, workerId: WORKER_ID });
       } else {
         await runVideoJob({ prisma, job, workerId: WORKER_ID });
@@ -139,6 +148,10 @@ async function main() {
         })
         .catch(() => {});
     } finally {
+      // Close the step list off against whatever state the job actually
+      // reached — clean finish, early return or crash. One place, so no
+      // pipeline can forget and leave a run looking stuck mid-step.
+      await closeRun(prisma, job.id).catch(() => {});
       clearInterval(beat);
     }
   }

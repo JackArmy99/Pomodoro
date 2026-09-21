@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { recordStep, noteStep, mergeDetail } from "@/lib/knowledge/runLog";
 import { splitParagraphs } from "@/lib/knowledge/documents";
 import { diffVersions, type DiffSegment } from "@/lib/knowledge/diff";
 import { createReader, Blocked, CapReached, type FetchLogEntry } from "@/lib/portal/fetch";
@@ -30,8 +31,10 @@ type Ctx = {
   }>;
 };
 
-async function setStage(prisma: PrismaClient, jobId: string, stage: string) {
-  await prisma.researchJob.update({ where: { id: jobId }, data: { stage } });
+// Every step is recorded, not just the one in progress: after a run the
+// question is always where it stopped and what it managed first.
+async function setStage(prisma: PrismaClient, jobId: string, stage: string, note?: string) {
+  await recordStep(prisma, jobId, stage, note);
 }
 
 type Preview = {
@@ -62,18 +65,29 @@ async function finish(
     data: {
       state,
       finishedAt: new Date(),
-      // The audit trail: every URL touched, with its outcome — plus, for a
-      // preview, what the page actually looked like once extracted.
-      detail: log.length || preview ? JSON.stringify({ log, preview }) : null,
       errorCode: error?.code ?? null,
       errorMessage: error?.message?.slice(0, 300) ?? null,
     },
   });
+
+  // The audit trail: every URL touched, with its outcome — plus, for a preview,
+  // what the page looked like once extracted. MERGED, never written over the
+  // top: this used to replace the whole column and so threw away the step list
+  // at exactly the moment it was worth reading, the end of a failed run.
+  if (log.length || preview) {
+    await mergeDetail(prisma, jobId, { log, preview });
+  }
 }
 
 export async function runPageJob(ctx: Ctx): Promise<void> {
   const { prisma, job } = ctx;
   const dryRun = job.kind === "page_dry";
+
+  // Record a step BEFORE the gates, so a run refused for permission or a
+  // missing session still shows what it was doing and why it stopped. Without
+  // this, the most common early failure produced an empty timeline — the one
+  // case where a timeline is most wanted.
+  await setStage(prisma, job.id, "check", dryRun ? "preview — nothing will be stored" : undefined);
 
   const source = await prisma.knowledgeSource.findUnique({
     where: { id: job.sourceId },
@@ -178,6 +192,12 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
     // ---- store ------------------------------------------------------------
     await setStage(prisma, job.id, "store");
     const paragraphs = splitParagraphs(page.text);
+    await noteStep(
+      prisma,
+      job.id,
+      `${paragraphs.length} paragraphs` +
+        (page.embeds.length ? ` · ${page.embeds.length} embedded player(s)` : ""),
+    );
     if (paragraphs.length === 0) {
       await finish(prisma, job.id, "needs_input", reader.log, {
         code: "no_text",
@@ -198,7 +218,7 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
         where: { id: source.id },
         data: { currentVersionId: identical.id },
       });
-      await setStage(prisma, job.id, "published");
+      await setStage(prisma, job.id, "published", "unchanged — nothing stored");
       await finish(prisma, job.id, "succeeded", reader.log);
       return;
     }
@@ -246,6 +266,11 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
         text,
       }));
       const result = diffVersions(before as DiffSegment[], after);
+      await noteStep(
+        prisma,
+        job.id,
+        `${result.changes.length} change(s), ${result.unchanged} paragraphs unchanged`,
+      );
       await prisma.analysisRevision.create({
         data: {
           sourceVersionId: version.id,

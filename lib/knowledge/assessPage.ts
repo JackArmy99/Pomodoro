@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { recordStep, noteStep } from "@/lib/knowledge/runLog";
 import { summariseItem } from "@/lib/anthropic";
 import { microUsd } from "@/lib/research/cost";
 import { upsertSourceFinding } from "@/lib/knowledge/finding";
@@ -22,8 +23,10 @@ type Ctx = {
   workerId: string;
 };
 
-async function setStage(prisma: PrismaClient, jobId: string, stage: string) {
-  await prisma.researchJob.update({ where: { id: jobId }, data: { stage } });
+// Every step is recorded, not just the one in progress: after a run the
+// question is always where it stopped and what it managed first.
+async function setStage(prisma: PrismaClient, jobId: string, stage: string, note?: string) {
+  await recordStep(prisma, jobId, stage, note);
 }
 
 async function finish(
@@ -55,6 +58,11 @@ function bodyFor(url: string): string {
 
 export async function runPageAssessJob(ctx: Ctx): Promise<void> {
   const { prisma, job } = ctx;
+
+  // A step before the checks, for the same reason as the page pipeline: a run
+  // that stops at "there is nothing stored yet" should say so on the timeline
+  // rather than leaving it blank.
+  await setStage(prisma, job.id, "check");
 
   const source = await prisma.knowledgeSource.findUnique({
     where: { id: job.sourceId },
@@ -133,6 +141,15 @@ export async function runPageAssessJob(ctx: Ctx): Promise<void> {
       data: { spentMicroUsd: { increment: cost } },
     });
   }
+
+  await noteStep(
+    prisma,
+    job.id,
+    `relevance ${summary.relevance}` +
+      (summary.suggestedModules.length
+        ? ` · ${summary.suggestedModules.join(", ")}`
+        : " · no module matched"),
+  );
 
   await setStage(prisma, job.id, "finding");
   await upsertSourceFinding(prisma, source.id, {

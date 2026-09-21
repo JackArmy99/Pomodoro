@@ -11,10 +11,12 @@ import {
 import SubmitButton from "@/components/SubmitButton";
 import AutoRefresh from "@/components/AutoRefresh";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
+import { parseDetail } from "@/lib/knowledge/runLog";
 import {
   JOB_STATE_LABELS,
   JOB_STATE_STYLES,
   STAGE_LABELS,
+  jobKindLabel,
   errorAdvice,
   sourceView,
 } from "@/lib/knowledge/format";
@@ -104,19 +106,13 @@ export default async function KnowledgeSourcePage({
   // One decision per kind, in one place — see sourceView() for why.
   const view = sourceView(source.kind);
   const { isDocument, isPage } = view;
-  // The audit trail of every URL this run touched.
-  let fetchLog: any[] = [];
-  let preview: any = null;
-  try {
-    if (job?.detail) {
-      const parsed = JSON.parse(job.detail);
-      // Older runs stored a bare array; newer ones store { log, preview }.
-      fetchLog = Array.isArray(parsed) ? parsed : (parsed.log ?? []);
-      preview = Array.isArray(parsed) ? null : (parsed.preview ?? null);
-    }
-  } catch {
-    fetchLog = [];
-  }
+  // What the run did, and the audit trail of every URL it touched.
+  // parseDetail copes with all three shapes this column has held: the wrapper
+  // object, the bare fetch-log array older runs wrote, and nothing.
+  const detail = parseDetail(job?.detail);
+  const fetchLog: any[] = (detail.log as any[]) ?? [];
+  const preview: any = detail.preview ?? null;
+  const steps = detail.steps ?? [];
 
   // Documents record a diff against the previous version — computed locally, so
   // it exists whether or not anyone ever pays to have it explained.
@@ -237,7 +233,7 @@ export default async function KnowledgeSourcePage({
           <p className="text-sm text-amber-900">
             {job.state === "cancelled"
               ? "You stopped this job. Nothing was analysed."
-              : errorAdvice(job.errorCode, job.errorMessage)}
+              : errorAdvice(job.errorCode, job.errorMessage, job.kind)}
           </p>
           <form action={retrySource}>
             <input type="hidden" name="sourceId" value={source.id} />
@@ -263,6 +259,55 @@ export default async function KnowledgeSourcePage({
             </button>
           </form>
         </div>
+      )}
+
+      {/* What it did, step by step. A single "current stage" column is useless
+          the moment a run ends: the question is always where it stopped and
+          what it managed first. The job KIND is on this line too — a page being
+          handed to the video pipeline went undiagnosed for a whole round
+          because nothing on screen said which pipeline was running. */}
+      {job && steps.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">What it did</h2>
+            <p className="text-xs text-slate-500">
+              {jobKindLabel(job.kind)} · {formatPence(job.spentMicroUsd)}
+            </p>
+          </div>
+          <ol className="card space-y-1 text-xs">
+            {steps.map((step: any, i: number) => (
+              <li key={i} className="flex flex-wrap items-baseline gap-2">
+                <span
+                  className={
+                    step.state === "stopped"
+                      ? "text-rose-600"
+                      : step.state === "running"
+                        ? "text-indigo-600"
+                        : "text-emerald-600"
+                  }
+                >
+                  {step.state === "stopped" ? "✗" : step.state === "running" ? "…" : "✓"}
+                </span>
+                <span className="font-medium text-slate-700">
+                  {STAGE_LABELS[step.stage] ?? step.stage}
+                </span>
+                <span className="text-slate-400">
+                  {new Date(step.at).toLocaleTimeString()}
+                </span>
+                {step.note && (
+                  <span
+                    className={
+                      step.state === "stopped" ? "text-rose-700" : "text-slate-500"
+                    }
+                  >
+                    {step.state === "stopped" ? "stopped here — " : ""}
+                    {step.note}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
       )}
 
       {/* A page and a document have no Summary section to carry the inbox link,

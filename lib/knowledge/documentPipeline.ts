@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { PrismaClient } from "@prisma/client";
+import { recordStep, noteStep } from "@/lib/knowledge/runLog";
 import {
   contentHash,
   extractPages,
@@ -28,8 +29,10 @@ type Ctx = {
   workerId: string;
 };
 
-async function setStage(prisma: PrismaClient, jobId: string, stage: DocStage) {
-  await prisma.researchJob.update({ where: { id: jobId }, data: { stage } });
+// Every step is recorded, not just the one in progress: after a run the
+// question is always where it stopped and what it managed first.
+async function setStage(prisma: PrismaClient, jobId: string, stage: DocStage, note?: string) {
+  await recordStep(prisma, jobId, stage, note);
 }
 
 async function fail(

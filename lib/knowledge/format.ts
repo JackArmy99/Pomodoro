@@ -32,10 +32,38 @@ export const STAGE_LABELS: Record<string, string> = {
   // document import
   read: "Reading the file",
   compare: "Comparing with the last version",
+  check: "Checking access",
   fetch: "Reading the page",
 };
 
-export function errorAdvice(code: string | null, message: string | null): string {
+// What KIND of work a job is, in plain words. On screen this is the line that
+// would have caught a page being handed to the video pipeline at a glance.
+export const JOB_KIND_LABELS: Record<string, string> = {
+  video: "Watching a video",
+  analyse: "Re-reading a stored transcript",
+  document: "Importing a document",
+  page: "Checking a web page",
+  page_dry: "Previewing a web page",
+  page_assess: "Assessing a page for the inbox",
+};
+
+export function jobKindLabel(kind: string): string {
+  return JOB_KIND_LABELS[kind] ?? kind;
+}
+
+export function errorAdvice(
+  code: string | null,
+  message: string | null,
+  kind = "video",
+): string {
+  // A page must never be given video wording. This used to happen for real: a
+  // retry of a portal page ran as a video job and reported a YouTube error.
+  if (code === "network_error" && kind !== "video" && kind !== "analyse") {
+    return (
+      "This ran as the wrong kind of job — a video fetch against a web page. " +
+      "That bug is fixed; press Try again."
+    );
+  }
   switch (code) {
     case "captions_disabled":
       return "Captions are turned off for this video, so there's no transcript to read. Nothing was analysed.";

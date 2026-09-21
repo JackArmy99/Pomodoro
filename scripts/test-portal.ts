@@ -7,6 +7,8 @@ import {
   allowedHosts,
 } from "@/lib/portal/allowlist";
 import { createReader, Blocked, CapReached } from "@/lib/portal/fetch";
+import { jobHandlerFor, retryKindFor } from "@/lib/knowledge/jobKinds";
+import { parseDetail, closeRun } from "@/lib/knowledge/runLog";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,6 +96,36 @@ console.log("\nWhat it is NOT allowed to follow");
     !hosts.some((h) => h === "" || h.includes("mailto")));
   check("reporting a host does NOT make it fetchable",
     rejected.every((r) => !checkUrl(r.example).ok));
+}
+
+// The bug this replaced: ResearchJob.kind defaults to "video", requeueSource
+// created jobs without one, and the worker's routing fell through to the video
+// pipeline — so "Try again" on a Tagetik page asked YouTube for captions.
+console.log("\nWhich pipeline a job belongs to");
+{
+  check("retrying a page makes a page job", retryKindFor("page") === "page");
+  check("retrying a document makes a document job",
+    retryKindFor("document") === "document");
+  check("retrying a video makes a video job", retryKindFor("youtube") === "video");
+
+  check("a page job runs the page pipeline",
+    jobHandlerFor("page", "page").handler === "page");
+  check("a preview runs the page pipeline",
+    jobHandlerFor("page_dry", "page").handler === "page");
+  check("an assess job runs the assess pipeline",
+    jobHandlerFor("page_assess", "page").handler === "page_assess");
+  check("a video job runs the video pipeline",
+    jobHandlerFor("video", "youtube").handler === "video");
+
+  // The regression itself.
+  const misrouted = jobHandlerFor("video", "page");
+  check("a VIDEO job on a PAGE source does not reach the video pipeline",
+    misrouted.handler === "page", misrouted.handler);
+  check("and the correction is recorded, not silent", Boolean(misrouted.corrected));
+  check("a video job on a document source runs the document pipeline",
+    jobHandlerFor("video", "document").handler === "document");
+  check("an unknown job kind follows the source",
+    jobHandlerFor("mystery", "page").handler === "page");
 }
 
 console.log("\nReading pages");
@@ -228,6 +260,8 @@ async function pipelineGuards() {
       workerId: "t",
       openBrowser: fakeBrowser as any,
     });
+    // Exactly what the worker does in its finally block.
+    await closeRun(prisma as any, job.id);
     return prisma.researchJob.findUnique({ where: { id: job.id } });
   };
 
@@ -285,7 +319,48 @@ async function pipelineGuards() {
     changes.some((c: any) => c.kind === "changed" && c.after.includes("reworded")), JSON.stringify(changes.map((c: any) => c.kind)));
   check("comparing still costs nothing", (changed?.spentMicroUsd ?? 0) === 0);
 
-  // 6. Into the inbox. The Finding half is tested without a model call by
+  // 6. What it did — the step log. A "current stage" column is useless after a
+  //    run ends; the question is where it stopped and what it managed first.
+  console.log("\nThe run log");
+  {
+    const stored = parseDetail(changed?.detail);
+    const stages = (stored.steps ?? []).map((s) => s.stage);
+    check("a run records every step it took",
+      ["fetch", "store", "compare", "published"].every((x) => stages.includes(x)),
+      stages.join(" → "));
+    check("the steps are in order",
+      stages.indexOf("fetch") < stages.indexOf("store") &&
+        stages.indexOf("store") < stages.indexOf("compare"));
+    check("each step is timestamped",
+      (stored.steps ?? []).every((s) => !Number.isNaN(Date.parse(s.at))));
+    check("a finished run leaves no step still running",
+      (stored.steps ?? []).every((s) => s.state !== "running"));
+    check("a step carries the number that explains it",
+      (stored.steps ?? []).some((s) => (s.note ?? "").includes("paragraph")),
+      JSON.stringify((stored.steps ?? []).map((s) => s.note)));
+    // The merge: the page pipeline used to overwrite this column wholesale.
+    check("the steps and the fetch log survive together",
+      (stored.steps ?? []).length > 0 && (stored.log ?? []).length > 0);
+  }
+
+  // A run that stops early must keep BOTH, and say which step it stopped at —
+  // the case the overwrite used to destroy.
+  {
+    await setPortalEnabled(false);
+    const refused = await run("page");
+    const stored = parseDetail(refused?.detail);
+    const last = (stored.steps ?? [])[(stored.steps ?? []).length - 1];
+    check("a refused run still records what it did", (stored.steps ?? []).length > 0,
+      JSON.stringify((stored.steps ?? []).map((s) => s.stage)));
+    check("it stopped at a named step, not nowhere", last?.stage === "check", last?.stage);
+    check("the step is marked stopped, not left running",
+      last?.state === "stopped", String(last?.state));
+    check("and the step carries the reason",
+      (last?.note ?? "").toLowerCase().includes("portal"), last?.note ?? "(none)");
+    await setPortalEnabled(true);
+  }
+
+  // 7. Into the inbox. The Finding half is tested without a model call by
   //    driving the shared helper directly; the job wiring is tested by running
   //    it with no API key, which must stop cleanly rather than crash.
   console.log("\nInto the research inbox");

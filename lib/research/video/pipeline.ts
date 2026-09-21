@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
+import { recordStep, noteStep } from "@/lib/knowledge/runLog";
 import { acquireCaptions, fetchMetadata } from "@/lib/research/video/youtube";
 import { upsertSourceFinding } from "@/lib/knowledge/finding";
 import {
@@ -42,8 +43,10 @@ async function assertNotCancelled(prisma: PrismaClient, jobId: string) {
   if (job?.cancelRequestedAt) throw new Cancelled();
 }
 
-async function setStage(prisma: PrismaClient, jobId: string, stage: Stage) {
-  await prisma.researchJob.update({ where: { id: jobId }, data: { stage } });
+// Every step is recorded, not just the one in progress: after a run the
+// question is always where it stopped and what it managed first.
+async function setStage(prisma: PrismaClient, jobId: string, stage: Stage, note?: string) {
+  await recordStep(prisma, jobId, stage, note);
 }
 
 // Terminal failure with a reason the UI can explain in plain English.
