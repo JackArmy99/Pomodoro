@@ -80,7 +80,7 @@ export function errorAdvice(code: string | null, message: string | null): string
     case "no_browser":
       return message ?? "The browser isn't installed. Run:  npm run portal:setup";
     case "no_version":
-      return "There's no stored transcript for this video yet.";
+      return "Nothing is stored for this source yet — fetch or import it first, then try again.";
     case "network_error":
       return `Couldn't reach YouTube: ${message ?? "network error"}.`;
     default:

@@ -28,7 +28,7 @@
     "test:video": "tsx scripts/test-video.ts",
     "test:docs": "tsx scripts/test-docs.ts",
     "test:portal": "tsx scripts/test-portal.ts",
-    "portal:setup": "npm install playwright && npx playwright install chromium",
+    "portal:setup": "node scripts/portal-setup.mjs",
     "portal:login": "tsx scripts/portal-login.ts",
     "portal:check": "tsx scripts/portal-check.ts",
     "portal:forget": "tsx scripts/portal-forget.ts",

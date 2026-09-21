@@ -6,6 +6,7 @@ import {
   cancelSourceJob,
   summariseSource,
   recheckPage,
+  assessPage,
 } from "@/app/actions/knowledge";
 import SubmitButton from "@/components/SubmitButton";
 import AutoRefresh from "@/components/AutoRefresh";
@@ -136,7 +137,7 @@ export default async function KnowledgeSourcePage({
 
   const finding = await prisma.finding.findUnique({
     where: { knowledgeSourceId: source.id },
-    select: { id: true, status: true },
+    select: { id: true, status: true, summary: true, relevance: true },
   });
 
   // One cumulative number can't be reasoned about — a re-run looks like an
@@ -261,6 +262,28 @@ export default async function KnowledgeSourcePage({
               Cancel
             </button>
           </form>
+        </div>
+      )}
+
+      {/* A page and a document have no Summary section to carry the inbox link,
+          so it gets its own line — otherwise assessing something appears to do
+          nothing. */}
+      {!view.showSummary && finding && (
+        <div className="card flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-1">
+            <span className={`chip ${RELEVANCE_STYLES[finding.relevance] ?? ""}`}>
+              {RELEVANCE_LABELS[finding.relevance] ?? finding.relevance}
+            </span>
+            <p className="text-sm text-slate-700">
+              {finding.summary || "Assessed and added to the research inbox."}
+            </p>
+          </div>
+          <Link
+            href={`/research/${finding.id}`}
+            className="text-xs font-medium text-indigo-600 hover:underline"
+          >
+            In the inbox ({finding.status}) →
+          </Link>
         </div>
       )}
 
@@ -544,6 +567,44 @@ export default async function KnowledgeSourcePage({
                 </pre>
               </div>
             )}
+            {/* On a webinar page the video is usually NOT a link — it sits in
+                an iframe or a <video> tag, often on another company's host.
+                Showing it is how we learn what "Watch" actually opens. Nothing
+                here was fetched. */}
+            {preview.embeds?.length > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-sm font-semibold text-emerald-900">
+                  Embedded players and files
+                </p>
+                <p className="mt-0.5 text-xs text-emerald-800">
+                  Found on the page but not opened. This is where a webinar&apos;s
+                  video lives.
+                </p>
+                <ul className="mt-2 space-y-0.5 text-xs text-emerald-900">
+                  {preview.embeds.map((e: string) => (
+                    <li key={e} className="break-all">
+                      {e}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {preview.notFollowed?.length > 0 && (
+              <details className="text-xs text-slate-500">
+                <summary className="cursor-pointer">
+                  Other sites this page points at — not followed (
+                  {preview.notFollowed.length})
+                </summary>
+                <ul className="mt-1 space-y-0.5">
+                  {preview.notFollowed.map((n: any) => (
+                    <li key={n.host} className="truncate">
+                      <span className="font-medium text-slate-700">{n.host}</span>{" "}
+                      &times;{n.count} — {n.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
             {preview.links?.length > 0 && (
               <details className="text-xs text-slate-500">
                 <summary className="cursor-pointer">Links on this page</summary>
@@ -567,12 +628,25 @@ export default async function KnowledgeSourcePage({
               Pages this run touched
             </h2>
             {!pending && (
-              <form action={recheckPage}>
-                <input type="hidden" name="sourceId" value={source.id} />
-                <SubmitButton pendingLabel="Queueing…">
-                  Check for changes
-                </SubmitButton>
-              </form>
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={recheckPage}>
+                  <input type="hidden" name="sourceId" value={source.id} />
+                  <SubmitButton pendingLabel="Queueing…">
+                    Check for changes
+                  </SubmitButton>
+                </form>
+                {/* The one step that costs money, so it is a button. Watching
+                    and diffing a page is free; assessing it is a fraction of a
+                    penny and puts it in the inbox as a possible opportunity. */}
+                {source.currentVersionId && (
+                  <form action={assessPage}>
+                    <input type="hidden" name="sourceId" value={source.id} />
+                    <SubmitButton pendingLabel="Queueing…">
+                      {finding ? "Re-assess for the inbox" : "Add to the inbox"}
+                    </SubmitButton>
+                  </form>
+                )}
+              </div>
             )}
           </div>
           {fetchLog.length === 0 ? (

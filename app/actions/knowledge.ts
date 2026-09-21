@@ -9,6 +9,7 @@ import {
   requeueSource,
   cancelJob,
   enqueueAnalysis,
+  enqueuePageAssessment,
 } from "@/lib/knowledge/sources";
 
 // Submit a video for research. Returns immediately — the worker does the work,
@@ -93,6 +94,19 @@ export async function recheckPage(formData: FormData) {
   const source = await prisma.knowledgeSource.findUnique({ where: { id: sourceId } });
   if (!source) return;
   const result = await enqueuePage(source.canonicalUrl, { dryRun: false });
+  if (!result.ok) {
+    redirect(`/knowledge/${sourceId}?error=${encodeURIComponent(result.error)}`);
+  }
+  revalidatePath(`/knowledge/${sourceId}`);
+}
+
+// Assess a stored page and put it in the research inbox. One model call, a
+// fraction of a penny — a button, never automatic, so a page that is only being
+// watched for changes never costs anything.
+export async function assessPage(formData: FormData) {
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) return;
+  const result = await enqueuePageAssessment(sourceId);
   if (!result.ok) {
     redirect(`/knowledge/${sourceId}?error=${encodeURIComponent(result.error)}`);
   }

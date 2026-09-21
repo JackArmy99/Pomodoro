@@ -44,7 +44,7 @@ npm run stop      # kill anything Beacon left running (frees the engine file)
 npm run test:video # free, no-API gate for the video pipeline
 npm run test:docs  # free, no-API gate for document import + change detection
 npm run test:portal # free, no-network gate for the portal guardrails
-npm run portal:setup # one-off: installs Playwright + Chromium (~300MB)
+npm run portal:setup # one-off: Playwright + Chromium (~300MB), then LAUNCHES it
                      # if npm holds back install scripts: npm install-scripts approve <pkg>
 npm run portal:login # YOU sign in, in a real browser; the session is reused
 npm run portal:check # session valid? + how many passwords the profile holds
@@ -267,6 +267,42 @@ confident-but-wrong AI specifics reaching a client.
 - **`node --check` proves syntax, not that a script runs.** Execute new scripts
   far enough to see their imports resolve — a missing-dependency message is
   proof the module graph loaded; a clean `--check` is proof of nothing.
+- **`npm run update` used to silently uninstall Playwright.** The updater does
+  `git restore package.json package-lock.json` (npm's scribbles block `git pull`)
+  and then `npm install`, which prunes anything not in package.json. Because
+  `portal:setup` used `npm install playwright`, which **saves**, the restore threw
+  the line away and the install removed the package — and the portal then told
+  the truth ("Playwright isn't installed") about a state nobody could explain.
+  Now `portal:setup` installs with `--no-save` and writes a marker in the
+  git-ignored `storage/`; `restorePlaywright()` in `postPull()` puts the package
+  back when the marker is there and it is missing. Never `npm install <pkg>`
+  without `--no-save` for anything meant to stay out of package.json.
+- **`portal:setup` proves the browser starts, it doesn't just install it.** An
+  install log is not evidence: npm can hold back install scripts and the
+  Chromium download can be blocked, and both look like success. The script
+  launches Chromium, prints its version and closes it — same rule as
+  "`node --check` proves syntax, not that a script runs".
+- **The preview reports what it may NOT follow.** `permittedLinks()` drops
+  off-allowlist links, which hid the one fact a webinar page exists to tell us:
+  its player is usually on someone else's host, and often in an `<iframe>`
+  rather than a link at all. `browser.ts` now also collects `iframe/video src`
+  as `embeds`, and `rejectedLinks()` groups refused links by host. Both are
+  **recorded, never fetched** — `checkUrl()` still governs every navigation and
+  the allowlist is unchanged. Asserted in `npm run test:portal`.
+- **Watching a page is free; assessing it is the only step that spends.**
+  `lib/knowledge/assessPage.ts` (`page_assess` job) reads the STORED version —
+  no portal traffic — and makes one `summariseItem()` call, landing a pending,
+  unverified Finding. It is a button, never automatic, so a page watched purely
+  for changes costs nothing however often it is checked.
+- **One inbox item per knowledge source, from one helper.**
+  `lib/knowledge/finding.ts` `upsertSourceFinding()` is shared by the video and
+  page paths. The unique `knowledgeSourceId` makes a re-run update rather than
+  duplicate, and every update spreads `CLEARS_VERIFICATION` — a tick can never
+  carry changed content through to a client.
+- **`summariseItem` treats the item as untrusted content.** It reads forum posts
+  and vendor pages written by other people, so the prompt says plainly that the
+  item is data to summarise and never an instruction to follow — the rule the
+  video prompts already carried.
 - **Playwright is an OPTIONAL dependency** (~300MB), declared in
   `types/playwright.d.ts` and loaded dynamically, so nobody who never touches
   the portal pays for it. `npm run portal:setup` installs it.
@@ -283,9 +319,17 @@ confident-but-wrong AI specifics reaching a client.
 - Video Retriever: **M1** durable captions-first ingestion (proven on a 26-min
   video: 902 segments stored in full) and **M2** cited summary → pending Finding.
   Next: M3 chunking + search over transcripts, M4 cancel/retry/budget UI.
-- Next: test & tune the Finder live; then **Retriever** (point at video/manual)
-  and **Comparer** (version-diff manuals); later ASR for caption-less video,
-  guardrailed portal login, hosting (Azure) + scheduling + team sharing.
+- Portal: login, allowlist, paced/capped/logged reads, watch-a-page (fetch →
+  store → compare, no model call), preview that reports embeds and the hosts it
+  may not follow, and **Assess → pending Finding** so a portal page reaches the
+  inbox and the existing approve → opportunity flow.
+- Next: **one webinar end to end** — preview
+  `community.tagetik.com/library/wb-product-demo-…`, read what "Watch" points
+  at, store it, assess it. That decides the video path: a YouTube/Vimeo embed
+  goes straight into the existing video pipeline; a Wolters Kluwer stream means
+  media retrieval + local Whisper as its own milestone. Then the **Library
+  sweep** (listing parser → manuals to the document pipeline, everything else to
+  the inbox). Later: scheduling, hosting (Azure), team sharing.
 
 ## Testing the Finder (quick loop)
 

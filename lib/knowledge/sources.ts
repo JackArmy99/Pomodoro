@@ -243,3 +243,36 @@ export async function enqueuePage(
 
   return { ok: true, sourceId: source.id, created: !existing };
 }
+
+// Assess a stored page: one model call, one pending inbox item.
+//
+// Deliberately separate from re-checking the page. Fetching and diffing are
+// free and can run as often as you like; this is the step that spends money, so
+// it only ever happens because someone pressed the button.
+export async function enqueuePageAssessment(
+  sourceId: string,
+): Promise<EnqueueResult> {
+  const source = await prisma.knowledgeSource.findUnique({
+    where: { id: sourceId },
+    select: { id: true, currentVersionId: true },
+  });
+  if (!source) return { ok: false, error: "That source no longer exists." };
+  if (!source.currentVersionId) {
+    return {
+      ok: false,
+      error:
+        "Nothing is stored for this page yet — check it for changes first, then assess it.",
+    };
+  }
+
+  const active = await prisma.researchJob.findFirst({
+    where: { sourceId, state: { in: ["queued", "running", "retry_wait"] } },
+  });
+  if (!active) {
+    await prisma.researchJob.create({
+      data: { sourceId, kind: "page_assess", stage: "summarise" },
+    });
+  }
+
+  return { ok: true, sourceId, created: !active };
+}

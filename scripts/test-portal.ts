@@ -1,6 +1,11 @@
 // Guardrails for the portal agent. No network, no browser, no portal account —
 // these are the rules, tested as rules. Run: npm run test:portal
-import { checkUrl, permittedLinks, allowedHosts } from "@/lib/portal/allowlist";
+import {
+  checkUrl,
+  permittedLinks,
+  rejectedLinks,
+  allowedHosts,
+} from "@/lib/portal/allowlist";
 import { createReader, Blocked, CapReached } from "@/lib/portal/fetch";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
@@ -61,6 +66,36 @@ check("mailto is dropped", !links.some((l) => l.startsWith("mailto")));
 check("relative links resolve", links.some((l) => l === "https://www.tagetik.com/notes/2026"));
 check("the same page twice is one page", links.filter((l) => l.includes("support.tagetik.com/a")).length === 1);
 
+// A webinar's video normally lives on someone else's host, so silently dropping
+// off-allowlist links hid the one fact worth knowing. Reporting a host is not
+// visiting it — checkUrl still refuses every one of them.
+console.log("\nWhat it is NOT allowed to follow");
+{
+  const rejected = rejectedLinks(
+    [
+      "https://play.vidyard.com/abc",
+      "https://play.vidyard.com/def",
+      "https://www.youtube.com/watch?v=x",
+      "/notes/2026",
+      "mailto:someone@x.com",
+      "javascript:void(0)",
+    ],
+    "https://www.tagetik.com/index",
+  );
+  const hosts = rejected.map((r) => r.host);
+  check("an off-allowlist host is reported", hosts.includes("play.vidyard.com"));
+  check("a second player host is reported", hosts.includes("www.youtube.com"));
+  check("repeats are counted, not listed twice",
+    rejected.find((r) => r.host === "play.vidyard.com")?.count === 2,
+    JSON.stringify(rejected.map((r) => [r.host, r.count])));
+  check("an allowed link is not in the rejected list",
+    !hosts.includes("www.tagetik.com"));
+  check("page furniture is ignored",
+    !hosts.some((h) => h === "" || h.includes("mailto")));
+  check("reporting a host does NOT make it fetchable",
+    rejected.every((r) => !checkUrl(r.example).ok));
+}
+
 console.log("\nReading pages");
 function fakeBrowser(status: number | null = 200) {
   const visited: string[] = [];
@@ -68,7 +103,14 @@ function fakeBrowser(status: number | null = 200) {
     visited,
     ctx: {
       async goto(url: string) { visited.push(url); return { status }; },
-      async content() { return { title: "T", text: "body text", links: [] }; },
+      async content() {
+        return {
+          title: "T",
+          text: "body text",
+          links: ["https://example.com/tracker"],
+          embeds: ["https://play.vidyard.com/watch/abc"],
+        };
+      },
       async wait() {},
     },
   };
@@ -110,6 +152,15 @@ function fakeBrowser(status: number | null = 200) {
   const page = await reader.read("https://www.tagetik.com/a");
   check("a permitted page is read", page?.text === "body text");
   check("every read is logged", reader.log[0]?.outcome === "fetched" && Boolean(reader.log[0]?.at));
+  check("an embedded player is reported",
+    page?.embeds.includes("https://play.vidyard.com/watch/abc") ?? false,
+    JSON.stringify(page?.embeds));
+  check("the embed's host is named as not followed",
+    page?.notFollowed.some((n) => n.host === "play.vidyard.com") ?? false);
+  check("an off-allowlist link is named but still not followed",
+    (page?.notFollowed.some((n) => n.host === "example.com") ?? false) &&
+      !(page?.links.some((l) => l.includes("example.com")) ?? true));
+  check("nothing extra was visited", ok.visited.length === 1, `${ok.visited.length}`);
 
   check("the allowlist is not empty", allowedHosts().length > 0);
 
@@ -148,7 +199,14 @@ async function pipelineGuards() {
     return {
       ctx: {
         async goto() { return { status: 200 }; },
-        async content() { return { title: "Release notes", text, links: [] }; },
+        async content() {
+          return {
+            title: "Release notes",
+            text,
+            links: ["https://play.vidyard.com/watch/abc"],
+            embeds: ["https://play.vidyard.com/embed/abc"],
+          };
+        },
         async wait() {},
       },
       async signedOut() { return false; },
@@ -191,6 +249,12 @@ async function pipelineGuards() {
     String(previewDetail.preview?.textSample ?? "").includes("First paragraph"));
   check("a preview counts the paragraphs", previewDetail.preview?.paragraphs === 2);
   check("a preview is still logged for audit", (previewDetail.log ?? []).length > 0);
+  // The reason previews exist: on a webinar page this is where the video is.
+  check("a preview reports the embedded player",
+    (previewDetail.preview?.embeds ?? []).includes("https://play.vidyard.com/embed/abc"),
+    JSON.stringify(previewDetail.preview?.embeds));
+  check("a preview names the host it may not follow",
+    (previewDetail.preview?.notFollowed ?? []).some((n: any) => n.host === "play.vidyard.com"));
 
   // 3. A real run stores the page.
   const first = await run("page");
@@ -220,6 +284,72 @@ async function pipelineGuards() {
   check("the reworded paragraph is detected",
     changes.some((c: any) => c.kind === "changed" && c.after.includes("reworded")), JSON.stringify(changes.map((c: any) => c.kind)));
   check("comparing still costs nothing", (changed?.spentMicroUsd ?? 0) === 0);
+
+  // 6. Into the inbox. The Finding half is tested without a model call by
+  //    driving the shared helper directly; the job wiring is tested by running
+  //    it with no API key, which must stop cleanly rather than crash.
+  console.log("\nInto the research inbox");
+  const { upsertSourceFinding } = await import("@/lib/knowledge/finding");
+  const { runPageAssessJob } = await import("@/lib/knowledge/assessPage");
+
+  const item = {
+    title: "Webinar: CapEx and workforce planning",
+    summary: "A product demo covering capital expenditure and workforce planning.",
+    rawContent: "body",
+    sourceUrl: source.canonicalUrl,
+    sourceType: "portal",
+    sourceBody: "CCH Tagetik Community",
+    relevance: "medium",
+    relevanceReason: "Touches planning.",
+    moduleNames: [] as string[],
+  };
+
+  await upsertSourceFinding(prisma as any, source.id, item);
+  let finding = await prisma.finding.findUnique({
+    where: { knowledgeSourceId: source.id },
+  });
+  check("a page lands in the inbox", Boolean(finding));
+  check("it lands pending", finding?.status === "pending");
+  check("it lands UNVERIFIED", finding?.verified === false);
+  check("it carries the issuing site", finding?.sourceBody === "CCH Tagetik Community");
+  check("it links back to the page", finding?.sourceUrl === source.canonicalUrl);
+
+  // A human tick, then a re-assessment: the tick must not survive changed text.
+  await prisma.finding.update({
+    where: { id: finding!.id },
+    data: { verified: true, verifiedRevision: finding!.contentRevision },
+  });
+  await upsertSourceFinding(prisma as any, source.id, {
+    ...item,
+    summary: "Reworded after a re-assessment.",
+  });
+  finding = await prisma.finding.findUnique({
+    where: { knowledgeSourceId: source.id },
+  });
+  check("re-assessing does not create a second item",
+    (await prisma.finding.count({ where: { knowledgeSourceId: source.id } })) === 1);
+  check("re-assessing updates the existing one",
+    finding?.summary === "Reworded after a re-assessment.");
+  check("re-assessing clears a stale verification tick", finding?.verified === false);
+
+  // A page with nothing stored cannot be assessed — there would be nothing to
+  // send, and a model call on an empty page is money for nothing.
+  const empty = await prisma.knowledgeSource.create({
+    data: { provider: "portal", kind: "page", externalId: "www.tagetik.com/empty",
+            canonicalUrl: "https://www.tagetik.com/empty", title: "empty" },
+  });
+  const emptyJob = await prisma.researchJob.create({
+    data: { sourceId: empty.id, kind: "page_assess", stage: "summarise" },
+  });
+  await runPageAssessJob({
+    prisma: prisma as any,
+    job: { id: emptyJob.id, sourceId: empty.id, stage: "summarise", kind: "page_assess" },
+    workerId: "t",
+  });
+  const emptyAfter = await prisma.researchJob.findUnique({ where: { id: emptyJob.id } });
+  check("an unstored page is not assessed", emptyAfter?.errorCode === "no_version");
+  check("and no inbox item is invented",
+    (await prisma.finding.count({ where: { knowledgeSourceId: empty.id } })) === 0);
 
   await prisma.$disconnect();
   rmSync(dir, { recursive: true, force: true });

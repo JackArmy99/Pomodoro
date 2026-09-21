@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { splitParagraphs } from "@/lib/knowledge/documents";
 import { diffVersions, type DiffSegment } from "@/lib/knowledge/diff";
 import { createReader, Blocked, CapReached, type FetchLogEntry } from "@/lib/portal/fetch";
+import type { NotFollowed } from "@/lib/portal/allowlist";
 import { portalEnabled } from "@/lib/portal/enabled";
 import { hasProfile } from "@/lib/portal/session";
 import { createHash } from "node:crypto";
@@ -38,6 +39,11 @@ type Preview = {
   textSample: string;
   paragraphs: number;
   links: string[];
+  // Where a player or embedded document actually lives, and which hosts the
+  // page pointed at that we may not follow. Neither is ever fetched — on a
+  // webinar page this is the only way to learn what "Watch" opens.
+  embeds: string[];
+  notFollowed: NotFollowed[];
   // The repeating structure of a listing page, so a parser can be written
   // against the real markup instead of a guess.
   structure?: unknown;
@@ -141,6 +147,8 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
               textSample: paragraphs.slice(0, 40).join("\n\n").slice(0, 8000),
               paragraphs: paragraphs.length,
               links: page.links.slice(0, 40),
+              embeds: page.embeds.slice(0, 20),
+              notFollowed: page.notFollowed.slice(0, 20),
               structure: (browser.ctx as any).sample
                 ? await (browser.ctx as any).sample().catch(() => null)
                 : null,

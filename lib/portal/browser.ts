@@ -18,7 +18,12 @@ export type StructureSample = {
 export type BrowserSession = {
   ctx: {
     goto(url: string): Promise<{ status: number | null }>;
-    content(): Promise<{ title: string; text: string; links: string[] }>;
+    content(): Promise<{
+      title: string;
+      text: string;
+      links: string[];
+      embeds: string[];
+    }>;
     // Optional: only a listing page needs its structure sampled.
     sample?(): Promise<StructureSample>;
   };
@@ -47,7 +52,15 @@ export async function openBrowser(): Promise<BrowserSession> {
           const links = Array.from(document.querySelectorAll("a[href]")).map(
             (a) => (a as HTMLAnchorElement).getAttribute("href") ?? "",
           );
-          return { title: document.title ?? "", text, links };
+          // A "Watch" button is often not a link at all — the video sits in an
+          // iframe or a <video> tag. Collect those separately, or the one thing
+          // worth knowing about a webinar page is invisible.
+          const embeds = Array.from(
+            document.querySelectorAll("iframe[src], video[src], video source[src]"),
+          )
+            .map((el) => el.getAttribute("src") ?? "")
+            .filter(Boolean);
+          return { title: document.title ?? "", text, links, embeds };
         });
       },
       // A listing page is a repeated structure, and a parser written against

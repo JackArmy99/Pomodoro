@@ -34,7 +34,24 @@ async function main() {
     );
   }
 
-  const context = await openContext({ headed: false });
+  // Is the browser itself actually there? The package can be installed while
+  // the Chromium binary never downloaded — two different failures that look
+  // identical until one of them is named.
+  let context;
+  try {
+    context = await openContext({ headed: false });
+  } catch (err: any) {
+    const message = String(err?.message ?? err);
+    if (/Executable doesn't exist|playwright install/i.test(message)) {
+      console.error(
+        "\n❌ The playwright package is installed but the browser binary isn't." +
+          "\n\nRun:  npm run portal:setup\n",
+      );
+      process.exit(1);
+    }
+    throw err;
+  }
+
   try {
     const page = context.pages()[0] ?? (await context.newPage());
     const response = await page.goto(url, { waitUntil: "domcontentloaded" });

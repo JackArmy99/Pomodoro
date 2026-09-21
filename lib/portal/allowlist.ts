@@ -82,3 +82,46 @@ export function permittedLinks(links: string[], base: string): string[] {
   }
   return out;
 }
+
+// The mirror image of `permittedLinks`: what a page pointed at that we are NOT
+// allowed to follow, grouped by host.
+//
+// This is how the preview answers "where does the video actually live?" — on a
+// webinar page the player is routinely on someone else's host, and silently
+// dropping those links meant the one fact we needed never appeared. Reporting a
+// host is not visiting it: `checkUrl` still governs every navigation and the
+// allowlist is unchanged.
+export type NotFollowed = { host: string; count: number; example: string; reason: string };
+
+export function rejectedLinks(links: string[], base: string): NotFollowed[] {
+  const byHost = new Map<string, NotFollowed>();
+  for (const href of links) {
+    let absolute: URL;
+    try {
+      absolute = new URL(href, base);
+    } catch {
+      continue;
+    }
+    // Only web addresses are interesting here; mailto:, tel: and javascript:
+    // are page furniture, not somewhere content could be hiding.
+    if (absolute.protocol !== "https:" && absolute.protocol !== "http:") continue;
+    if (checkUrl(absolute.toString()).ok) continue;
+
+    const host = absolute.hostname.toLowerCase();
+    const seen = byHost.get(host);
+    if (seen) {
+      seen.count++;
+    } else {
+      byHost.set(host, {
+        host,
+        count: 1,
+        example: absolute.toString().slice(0, 300),
+        reason:
+          absolute.protocol === "https:"
+            ? "not on the allowed list"
+            : `${absolute.protocol} — https only`,
+      });
+    }
+  }
+  return [...byHost.values()].sort((a, b) => b.count - a.count);
+}

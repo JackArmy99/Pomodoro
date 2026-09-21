@@ -134,6 +134,36 @@ async function postPull() {
 
   step("Finishing up");
   await runWithRetry("npx prisma generate");
+
+  restorePlaywright();
+}
+
+// Put the portal browser back if this machine uses it.
+//
+// `npm install` above prunes anything not in package.json, and Playwright is
+// deliberately kept out of package.json (300MB nobody else should pay for).
+// So an update used to silently uninstall it and the portal would report
+// "Playwright isn't installed" — which was true, and baffling.
+//
+// The marker is written by `npm run portal:setup` and lives in the git-ignored
+// storage/ folder, so a machine that never set the portal up sees nothing.
+function restorePlaywright() {
+  const marker = join(root, "storage", "portal-installed.json");
+  if (!existsSync(marker)) return;
+  if (existsSync(join(root, "node_modules", "playwright"))) return;
+
+  step("Putting the portal browser back");
+  try {
+    run("npm install --no-save playwright");
+    console.log("Restored Playwright (the Chromium download is kept separately).");
+  } catch {
+    // Not fatal: everything except the portal still works, and portal:setup
+    // says so clearly when it is next needed.
+    console.log(
+      "Couldn't reinstall Playwright. The rest of Beacon is fine — run\n" +
+        "  npm run portal:setup\nwhen you next need the portal.",
+    );
+  }
 }
 
 try {

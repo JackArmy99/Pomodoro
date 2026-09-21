@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { acquireCaptions, fetchMetadata } from "@/lib/research/video/youtube";
-import { CLEARS_VERIFICATION } from "@/lib/research/revision";
+import { upsertSourceFinding } from "@/lib/knowledge/finding";
 import {
   summariseTranscript,
   summaryToText,
@@ -337,65 +337,21 @@ async function summariseVersion(
   return result.summary;
 }
 
-// One pending Finding per source. The unique knowledgeSourceId makes a second
-// run update the existing item instead of filling the inbox with duplicates.
+// One pending Finding per video. The shared helper enforces "one per source"
+// and the verification reset; a webinar page uses the same one.
 async function upsertFinding(
   ctx: Ctx,
   source: { id: string; title: string; canonicalUrl: string },
   summary: VideoSummary,
 ) {
-  const { prisma } = ctx;
-
-  const named = summary.modules.length
-    ? await prisma.module.findMany({
-        where: { name: { in: summary.modules } },
-        select: { id: true },
-      })
-    : [];
-
-  const text = summaryToText(summary);
-  const existing = await prisma.finding.findUnique({
-    where: { knowledgeSourceId: source.id },
-    select: { id: true, status: true },
-  });
-
-  if (existing) {
-    // Re-summarising changes the content, so any previous verification tick no
-    // longer applies to what's on screen — the same rule the inbox editor uses.
-    await prisma.$transaction([
-      prisma.finding.update({
-        where: { id: existing.id },
-        data: {
-          title: source.title || "(untitled video)",
-          summary: text,
-          relevance: summary.relevance,
-          relevanceReason: summary.relevanceReason,
-          ...CLEARS_VERIFICATION,
-        },
-      }),
-      prisma.findingModule.deleteMany({ where: { findingId: existing.id } }),
-      ...named.map((m) =>
-        prisma.findingModule.create({
-          data: { findingId: existing.id, moduleId: m.id },
-        }),
-      ),
-    ]);
-    return;
-  }
-
-  await prisma.finding.create({
-    data: {
-      title: source.title || "(untitled video)",
-      summary: text,
-      rawContent: summary.overview,
-      sourceUrl: source.canonicalUrl,
-      sourceType: "video",
-      status: "pending",
-      aiProcessed: true,
-      relevance: summary.relevance,
-      relevanceReason: summary.relevanceReason,
-      knowledgeSourceId: source.id,
-      modules: { create: named.map((m) => ({ moduleId: m.id })) },
-    },
+  await upsertSourceFinding(ctx.prisma, source.id, {
+    title: source.title || "(untitled video)",
+    summary: summaryToText(summary),
+    rawContent: summary.overview,
+    sourceUrl: source.canonicalUrl,
+    sourceType: "video",
+    relevance: summary.relevance,
+    relevanceReason: summary.relevanceReason,
+    moduleNames: summary.modules,
   });
 }

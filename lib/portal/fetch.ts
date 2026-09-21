@@ -1,4 +1,9 @@
-import { checkUrl, permittedLinks } from "@/lib/portal/allowlist";
+import {
+  checkUrl,
+  permittedLinks,
+  rejectedLinks,
+  type NotFollowed,
+} from "@/lib/portal/allowlist";
 
 // Reading a portal page: allowlisted, read-only, paced, capped and logged.
 //
@@ -23,6 +28,12 @@ export type PageResult = {
   title: string;
   text: string;
   links: string[];
+  // Players, embedded documents and anything else in an <iframe>/<video>. A
+  // webinar's video is normally here rather than in a link.
+  embeds: string[];
+  // Hosts the page pointed at that we are not allowed to follow. Recorded so a
+  // preview can say where the content lives; never fetched.
+  notFollowed: NotFollowed[];
 };
 
 export class Blocked extends Error {}
@@ -37,11 +48,33 @@ export type Reader = {
 type Ctx = {
   // A minimal browser-page interface, so this is testable without a browser.
   goto(url: string): Promise<{ status: number | null }>;
-  content(): Promise<{ title: string; text: string; links: string[] }>;
+  // `embeds` is optional so the guardrail tests keep working against the
+  // smallest possible fake page.
+  content(): Promise<{
+    title: string;
+    text: string;
+    links: string[];
+    embeds?: string[];
+  }>;
   wait?(ms: number): Promise<void>;
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Embeds are reported as-is, resolved against the page they were found on.
+// They are never fetched — seeing that a player lives on another host is the
+// whole point, and `checkUrl` still refuses to navigate there.
+function absolute(hrefs: string[], base: string): string[] {
+  const out = new Set<string>();
+  for (const href of hrefs) {
+    try {
+      out.add(new URL(href, base).toString().slice(0, 300));
+    } catch {
+      // not a usable address — skip
+    }
+  }
+  return [...out];
+}
 
 export function createReader(
   ctx: Ctx,
@@ -112,7 +145,7 @@ export function createReader(
         return null;
       }
 
-      const { title, text, links } = await ctx.content();
+      const { title, text, links, embeds = [] } = await ctx.content();
       fetched++;
       note(url, "fetched", status);
 
@@ -121,6 +154,8 @@ export function createReader(
         title,
         text,
         links: permittedLinks(links, url),
+        embeds: absolute(embeds, url),
+        notFollowed: rejectedLinks([...links, ...embeds], url),
       };
       pages.push(page);
       return page;
