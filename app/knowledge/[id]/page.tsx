@@ -15,6 +15,7 @@ import {
   JOB_STATE_STYLES,
   STAGE_LABELS,
   errorAdvice,
+  sourceView,
 } from "@/lib/knowledge/format";
 import type { VideoSummary, Coverage } from "@/lib/research/video/summarise";
 import { formatPence } from "@/lib/research/cost";
@@ -99,8 +100,9 @@ export default async function KnowledgeSourcePage({
       : [];
   const segmentStarts = new Map(citedSegments.map((s) => [s.ordinal, s.startMs]));
 
-  const isDocument = source.kind === "document";
-  const isPage = source.kind === "page";
+  // One decision per kind, in one place — see sourceView() for why.
+  const view = sourceView(source.kind);
+  const { isDocument, isPage } = view;
   // The audit trail of every URL this run touched.
   let fetchLog: any[] = [];
   let preview: any = null;
@@ -194,11 +196,7 @@ export default async function KnowledgeSourcePage({
         {source.channel && (
           <p className="text-sm text-slate-500">{source.channel}</p>
         )}
-        {isDocument ? (
-          <p className="text-xs text-slate-400">
-            Imported file · {source.externalId}
-          </p>
-        ) : (
+        {view.showVideoLink ? (
           <a
             href={source.canonicalUrl}
             target="_blank"
@@ -207,6 +205,19 @@ export default async function KnowledgeSourcePage({
           >
             Watch on YouTube ↗
           </a>
+        ) : isPage ? (
+          <a
+            href={source.canonicalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-medium text-indigo-600 hover:underline"
+          >
+            Open the page ↗
+          </a>
+        ) : (
+          <p className="text-xs text-slate-400">
+            Imported file · {source.externalId}
+          </p>
         )}
       </header>
 
@@ -255,7 +266,7 @@ export default async function KnowledgeSourcePage({
 
       {/* What changed — for documents this is computed locally, so it is free
           and available on every re-import. */}
-      {(isDocument || isPage) && (
+      {view.showChanges && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-slate-900">
             What changed in this version
@@ -318,7 +329,7 @@ export default async function KnowledgeSourcePage({
 
       {/* Summary — what the video actually says, most important first. Every
           point links to the second of the video it came from. */}
-      {!isDocument && (
+      {view.showSummary && (
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-900">Summary</h2>
@@ -453,11 +464,10 @@ export default async function KnowledgeSourcePage({
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">
-          {isDocument ? "Contents" : "Transcript"}{" "}
+          {view.contentsHeading}{" "}
           {version && (
             <span className="font-normal text-slate-400">
-              ({version._count.segments}{" "}
-              {isDocument ? "paragraphs" : "segments"}, stored in full)
+              ({version._count.segments} {view.unitWord}, stored in full)
             </span>
           )}
         </h2>
@@ -470,7 +480,7 @@ export default async function KnowledgeSourcePage({
             <div className="card divide-y divide-slate-100">
               {segments.map((s) => (
                 <p key={s.id} className="flex gap-3 py-1.5 text-sm">
-                  {isDocument ? (
+                  {!view.isVideo ? (
                     <span className="shrink-0 font-mono text-xs text-slate-400">
                       {s.page ? `p${s.page}` : "—"}
                     </span>
@@ -600,7 +610,9 @@ export default async function KnowledgeSourcePage({
         <ul className="card space-y-1 text-xs text-slate-500">
           <li>Added: {formatDate(source.createdAt)}</li>
           <li>Video id: {source.externalId}</li>
-          {version && <li>Transcript language: {version.language ?? "unknown"}</li>}
+          {version && view.isVideo && (
+            <li>Transcript language: {version.language ?? "unknown"}</li>
+          )}
           {job && <li>Job state: {job.state} · stage {job.stage}</li>}
           {job?.finishedAt && <li>Finished: {formatDate(job.finishedAt)}</li>}
           <li>
@@ -622,10 +634,12 @@ export default async function KnowledgeSourcePage({
               )}
             </li>
           ))}
-          <li className="pt-1 text-slate-400">
-            Speech evidence only — this version does not inspect the video
-            picture, so on-screen-only detail is not captured.
-          </li>
+          {view.isVideo && (
+            <li className="pt-1 text-slate-400">
+              Speech evidence only — this version does not inspect the video
+              picture, so on-screen-only detail is not captured.
+            </li>
+          )}
         </ul>
       </section>
     </div>

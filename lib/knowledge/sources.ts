@@ -184,6 +184,13 @@ export async function enqueueDocument(
   return { ok: true, sourceId: source.id, created: !existing };
 }
 
+// Host + path, so a watched page is identifiable in the list before it has
+// ever been fetched. Replaced by the page's real title on the first read.
+function placeholderTitle(url: URL): string {
+  const path = url.pathname.replace(/\/$/, "");
+  return `${url.hostname}${path}`.slice(0, 200);
+}
+
 // Watch a portal page. The URL is checked against the allowlist here, so an
 // off-limits address never even becomes a source.
 export async function enqueuePage(
@@ -215,7 +222,9 @@ export async function enqueuePage(
         kind: "page",
         externalId,
         canonicalUrl: url,
-        title: verdict.url.pathname,
+        // A placeholder until the first fetch reads the page's own <title>.
+        // The path alone ("/library") says nothing about which site it is on.
+        title: placeholderTitle(verdict.url),
       },
     }));
 

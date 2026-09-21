@@ -87,3 +87,43 @@ export function errorAdvice(code: string | null, message: string | null): string
       return message ?? "Something went wrong.";
   }
 }
+
+// What a source page should show, decided once by kind rather than by negating
+// another kind in six separate places.
+//
+// This exists because `isDocument ? … : …` was used to mean "is this a video?".
+// When pages arrived as a third kind, every one of those fell through to the
+// video branch — a web page offered "Watch on YouTube", a Summary box and a
+// Transcript heading. Video was the silent default; now nothing is.
+export type SourceView = {
+  isVideo: boolean;
+  isDocument: boolean;
+  isPage: boolean;
+  contentsHeading: string;
+  unitWord: string;
+  showVideoLink: boolean;
+  showSummary: boolean;
+  showChanges: boolean;
+};
+
+export function sourceView(kind: string): SourceView {
+  // Every kind names itself. Nothing is defined as "not the other two", so a
+  // kind added later shows the neutral page — a heading and its text — rather
+  // than inheriting a YouTube link and a summary box it has no content for.
+  const isVideo = kind === "youtube";
+  const isDocument = kind === "document";
+  const isPage = kind === "page";
+
+  return {
+    isVideo,
+    isDocument,
+    isPage,
+    contentsHeading: isVideo ? "Transcript" : "Contents",
+    unitWord: isVideo ? "segments" : "paragraphs",
+    // Only a video has somewhere to watch and a cited, timestamped summary.
+    showVideoLink: isVideo,
+    showSummary: isVideo,
+    // Only things that have versions to compare show a change list.
+    showChanges: isDocument || isPage,
+  };
+}

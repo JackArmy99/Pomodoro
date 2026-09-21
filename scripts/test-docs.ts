@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import { runDocumentJob } from "@/lib/knowledge/documentPipeline";
 import { diffVersions, normalise } from "@/lib/knowledge/diff";
 import { splitParagraphs, toSegments, documentKey } from "@/lib/knowledge/documents";
+import { sourceView } from "@/lib/knowledge/format";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = mkdtempSync(join(tmpdir(), "beacon-doctest-"));
@@ -56,8 +57,43 @@ function diffGuards() {
   check("a revised file maps to the same document", documentKey("Manual v3.pdf") === documentKey("manual-v3.PDF"));
 }
 
+// What each kind of source claims to be. A web page once offered "Watch on
+// YouTube" and a Transcript heading because video was the silent default, so
+// each kind is asserted explicitly here rather than inferred from the others.
+function sourceViewGuards() {
+  console.log("\nSource page, by kind");
+
+  const page = sourceView("page");
+  check("a web page offers nothing to watch", page.showVideoLink === false);
+  check("a web page has no cited summary", page.showSummary === false);
+  check("a web page reads 'Contents', not 'Transcript'", page.contentsHeading === "Contents", page.contentsHeading);
+  check("a web page counts paragraphs", page.unitWord === "paragraphs", page.unitWord);
+  check("a web page shows what changed", page.showChanges === true);
+  check("a web page is not a video", page.isVideo === false);
+
+  const video = sourceView("youtube");
+  check("a video links to YouTube", video.showVideoLink === true);
+  check("a video shows its summary", video.showSummary === true);
+  check("a video reads 'Transcript'", video.contentsHeading === "Transcript", video.contentsHeading);
+  check("a video counts segments", video.unitWord === "segments", video.unitWord);
+  check("a video has no version diff", video.showChanges === false);
+
+  const doc = sourceView("document");
+  check("a document reads 'Contents'", doc.contentsHeading === "Contents", doc.contentsHeading);
+  check("a document counts paragraphs", doc.unitWord === "paragraphs", doc.unitWord);
+  check("a document offers nothing to watch", doc.showVideoLink === false);
+  check("a document shows what changed", doc.showChanges === true);
+
+  // A kind nobody has taught it about must not quietly inherit the video page.
+  const unknown = sourceView("library");
+  check("an unfamiliar kind is not treated as a video", unknown.isVideo === false);
+  check("an unfamiliar kind offers nothing to watch", unknown.showVideoLink === false);
+  check("an unfamiliar kind claims no summary", unknown.showSummary === false);
+}
+
 async function main() {
   diffGuards();
+  sourceViewGuards();
   console.log("\nImport and revision, end to end");
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     cwd: root, stdio: "ignore", env: { ...process.env, DATABASE_URL: `file:${dbPath}` },

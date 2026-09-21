@@ -85,11 +85,13 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
   approve fan-out).
 - `/briefs`, `/briefs/[id]` — briefs + "who's affected".
 - `/opportunities` — pipeline + categories.
-- `/knowledge`, `/knowledge/[id]` — videos AND documents. A video shows its full
-  timestamped transcript plus a cited summary (each point linking to that second
-  of the video). A document (PDF/Word) is stored paragraph by paragraph with its
-  page number, and a re-upload under the same file name becomes a new version
-  showing exactly what changed. Both link to their inbox item.
+- `/knowledge`, `/knowledge/[id]` — videos, documents AND watched pages. A video
+  shows its full timestamped transcript plus a cited summary (each point linking
+  to that second of the video). A document (PDF/Word) is stored paragraph by
+  paragraph with its page number, and a re-upload under the same file name
+  becomes a new version showing exactly what changed. A watched portal page
+  behaves like a document: Contents, versions and a change list — never a video
+  link or a summary box. All three link to their inbox item.
 - `/clients`, `/clients/[id]`, `/modules`, `/modules/[id]`.
 
 ## Research engine (lib/research/)
@@ -238,6 +240,14 @@ confident-but-wrong AI specifics reaching a client.
   useful, and **posts there are untrusted user content** — when the "explain the
   changes" step is built, it must treat page text as data, never instructions,
   exactly as the video prompts do.
+- **A source page decides by kind, never by negating another kind.**
+  `sourceView()` in `lib/knowledge/format.ts` is the single place that answers
+  "video link? summary? Transcript or Contents?". Six conditionals used to ask
+  `isDocument ? … : …` while meaning *"is this a video?"*, so when pages arrived
+  as a third kind every one fell through to the video branch — a web page
+  offering "Watch on YouTube" and an empty Summary box. Each kind now names
+  itself (`kind === "youtube"`), so a kind added later gets the neutral page
+  instead of inheriting the video layout. Asserted in `npm run test:docs`.
 - **Preview reads one page and stores nothing**, showing the extracted text. On
   a page nobody has scraped before, seeing what extraction produced is the only
   way to judge it before committing to storing and diffing.
