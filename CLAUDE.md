@@ -14,6 +14,48 @@ briefs, opportunities, and **research agents** that gather intelligence.
 Confidentiality: clients are stored by **code name**, people by **initials** —
 no real client names/PII in the app.
 
+## Working with Jack (read before replying)
+
+- **Who:** Jack, a CCH Tagetik/EPM consultant and a coding **beginner**. He
+  runs Beacon on a **Windows 11** laptop in **PowerShell**, project at
+  `C:\Users\armst\Pomodoro`. Commands you give him must be PowerShell-safe;
+  remind him to `cd` there first.
+- **The test loop:** cloud sessions build and run the free gates; Jack runs it
+  for real on Windows and sends screenshots. Most lost rounds have been
+  Windows-only failures (file locks, Prisma engine, Playwright), so prefer
+  changes he can verify with one command and one screenshot.
+- **How to talk to him:** plain English, short, results first, then why.
+  Explain jargon or avoid it. Give numbers rather than assurance ("0 saved
+  passwords", "about 2p a run"). He cares about cost — say what things cost.
+- **His standing constraints (his words):** "a personal laptop that will have no
+  access to client data… strict restrictions on the agent"; clients by **code
+  name**, people by **initials**; portal access: "you have permission to do
+  this… in the most human way possible" — read as *considerate*, never
+  *disguised*: no CAPTCHA solving, stealth, proxy rotation or spoofing.
+- **Never** run `npm audit fix --force`; Prisma stays on 5.22.
+- **Cloud sessions:** the API key comes from the environment's settings as the
+  variable `ANTHROPIC_API_KEY` — a separate key in the spend-capped "Beacon –
+  cloud testing" workspace. Network secrets do NOT work for it here:
+  `api.anthropic.com` bypasses the egress proxy that injects them. Portal
+  testing stays on Jack's laptop by design (his session never leaves it), and
+  the Playwright browser CDN is blocked in the cloud anyway.
+
+### Open threads (update this list every session)
+
+- **Waiting on the live run (needs the cloud key):** `npm run doctor`; confirm
+  whether Haiku 4.5 test mode was failing on `effort`; one test-mode Finder run,
+  page assessment and video summary on Haiku 5.5 vs Sonnet, with real pence.
+  **Jack should not `npm run update` his laptop until this passes.**
+- **Waiting on Jack:** preview the webinar's own page
+  (`https://community.tagetik.com/library/wb-product-demo-transform-capex-and-workforce-planning-with-cch-tagetik`)
+  and send the **Embedded players and files** box, plus what clicking **Watch**
+  does in his own browser (new tab / pop-up player / download). That decides
+  the video path. Then judge one assessed item in `/research`.
+- **Next build once those land:** the Library sweep (design settled — see
+  PROJECT_LOG "Library sweep"). Offered and not yet built: `npm run report`
+  (one paste-able block of versions, settings and the last jobs' step
+  timelines, to replace screenshot round-trips).
+
 ## Stack
 
 - **Next.js 14 (App Router) + TypeScript + React** — UI in `app/` + `components/`.

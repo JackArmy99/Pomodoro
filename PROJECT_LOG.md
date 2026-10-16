@@ -2,6 +2,122 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-10 — Test mode on Haiku 5.5; doctor checks both models; a cloud key
+
+- **Why:** faster progress. The bottleneck was never credits, it was the test
+  loop (cloud builds with no API key → Jack tests on Windows → screenshots). A
+  spend-capped key in the cloud environment lets sessions run and tune real
+  summaries, assessments and Finder runs themselves.
+- **Key setup:** separate key in a "Beacon – cloud testing" workspace with a
+  monthly limit, held as the environment variable `ANTHROPIC_API_KEY`. A
+  separate workspace because limits are per workspace, spend shows separately,
+  and revoking it can't break Jack's laptop. Not a network secret:
+  `api.anthropic.com` bypasses the proxy that injects those.
+- **Haiku 5.5** ($0.10/$0.50 vs Haiku 4.5's $1/$5; ~30% bigger tokenizer, so
+  ~7–8× cheaper in practice). Override with `ANTHROPIC_TEST_MODEL`.
+- **Found on the way:** Haiku 4.5 rejects `effort`, which `summariseItem` sends —
+  test mode was very likely failing on every triage and assessment (to be
+  confirmed live). The web-search tool type was cached across models, so a
+  Sonnet run could lock Haiku out of the fallback. Cost display would have shown
+  5.5 at 4.5's price. All fixed; doctor now checks both models with the app's
+  real request shapes.
+- Thirty days of Jack's real usage to this point: **$1.67** ($1.32 tokens,
+  $0.35 web search).
+
+## 2026-09 — "Try again" was turning pages into video jobs; every run logs its steps
+
+- A page retry failed with `network_error`, an error only the YouTube code can
+  produce. `ResearchJob.kind` defaults to `"video"` and `requeueSource()` set no
+  kind; the worker's routing fell through to the video pipeline. Fixed with
+  `retryKindFor()` / `jobHandlerFor()` in `lib/knowledge/jobKinds.ts`.
+- Jack asked for "a log of what step the agent is on". Every run now records
+  timed steps with the number that explains them, shown as **What it did** with
+  the job kind. A step is recorded before the access gates, or the commonest
+  early failure showed an empty timeline.
+
+## 2026-09 — Portal: survive an update, see the player, reach the inbox
+
+- `npm run update` silently uninstalled Playwright (git restore + `npm install`
+  pruning a saved-then-discarded dependency). Now `--no-save` plus a marker the
+  updater re-heals from; `portal:setup` launches Chromium to prove it.
+- The preview hid where a webinar's video lives (iframe players, off-allowlist
+  hosts). It now reports embeds and refused hosts — recorded, never fetched.
+- **Add to the inbox**: the only paid step for a page (one `summariseItem`
+  call); watching and diffing stay free.
+
+## 2026-09 — Library sweep: design settled, not yet built
+
+- The Library (`community.tagetik.com/library`, ~3,500 assets) is a **list**:
+  track items by link, never diff the page text.
+- Collect: **Webinars, How-to guides/manuals, Newsletters, White papers,
+  E-books**. How-to guides/manuals are downloaded (only new ones, size cap
+  `PORTAL_MAX_DOWNLOAD_MB`, default 50) and go through the document pipeline so
+  each version is diffed. Everything else becomes a pending inbox item (a
+  potential opportunity). Dedupe on `Finding.externalId = library:<href>`.
+- **A button for now**, scheduling later (Jack's call).
+- Webinars: Jack cited `paulthewebdeveloper/hermes-research-agent` — checked: it
+  uses yt-dlp + whisper.cpp + ffmpeg, so caption-less transcription is real. The
+  open question is reaching the media behind the portal login at all; the
+  preview's embeds box decides it.
+- The parser must be written against the real markup (`browser.ts` `sample()`),
+  not a guess. A watched page reads ONE page and never follows links — so
+  pointing it at the listing does not reach the webinar.
+
+## 2026-09 — The Tagetik portal, safely
+
+- **Jack signs in himself** in a real browser (`portal:login`); Beacon reuses
+  the session and never stores the password. The profile is a real Chromium
+  profile, so its own password manager is switched off and `portal:check`
+  **counts** saved passwords (0) — evidence, not assurance.
+- Guardrails are code, not prompts: host allowlist (widened only via `.env`),
+  https only, paced, page-capped, every URL logged, **stop on 429/403**. Off
+  until the `portal_enabled` toggle — its label is Jack's recorded permission.
+- "The most human way possible" = considerate (real browser, one page at a time,
+  unhurried, stops when pushed back), never disguised. No CAPTCHA solving,
+  stealth, proxy rotation or user-agent spoofing — being undetectable is a
+  different property, and it would hide our activity from Wolters Kluwer.
+- A `.mjs` script statically importing `.ts` failed on Jack's Node only;
+  `node --check` had "passed". Scripts needing project code are `.ts` now, and
+  new scripts are executed, not just syntax-checked.
+
+## 2026-09 — Manuals: store the original, diff the versions, never rewrite
+
+- Jack's reasoning: answers drawn from a rewrite can't be trusted, so **search
+  the original** and spend effort only on **what changed** between versions.
+- Import is free (no model call); a re-upload under the same name is a new
+  version with a local paragraph diff. Rewording reads as CHANGED (Dice
+  similarity on punctuation-stripped words — the first version's maths split a
+  lightly edited sentence into add + remove).
+- Keyword weakness on synonyms → **query expansion** first; embeddings only if
+  that measurably falls short.
+- Multi-agent orchestrators: Jack's colleagues use them and they're not as
+  expensive as first implied. Decision: per-stage model/prompt config gets most
+  of the benefit; revisit orchestration when a stage needs it.
+
+## 2026-09 — Video summaries that teach, in English, that parse
+
+- The first summary judged the video ("generic AI content") instead of teaching
+  it — the grounding block's triage rule was in the extraction prompt. Now two
+  passes: extract with **no grounding**, then classify from the notes.
+- Bar set by Jack: a Tagetik webinar summary detailed enough to **give to a
+  client**. Lists are enumerated, specifics kept, every point cited to a second
+  of the video.
+- Replies are schema-constrained (`output_config.format`) after free-prose JSON
+  failed three times; long notes stream with a per-model cap and split on
+  truncation. Notes are **always English**; transcripts are never translated.
+- A 67-minute German video cost 38p over ~4 runs (~9–12p a clean run).
+
+## 2026-09 — Windows "file in use", three times, and a corrupted table
+
+- `prisma generate` hit EPERM three ways: a running app, the updater itself
+  (an in-process PrismaClient holds the engine DLL forever), and an orphaned
+  worker (killing npm left node alive). Fixes: the updater re-execs its post-pull
+  half, repairs run as child processes, process groups are killed, the engine
+  file itself is tested for a lock, and `npm run stop` exists.
+- The mis-ordered migration had already written column **names** into Finding
+  rows (SQLite treats an unknown double-quoted identifier as a string). A guarded
+  repair migration fixed them; `npm run db:check` now catches the class.
+
 ## 2026-09 — Migration ordering bug (P3018) and the guard that was missing
 
 `npm run update` failed with `duplicate column name: contentRevision`. Two
