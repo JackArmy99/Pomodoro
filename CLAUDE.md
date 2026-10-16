@@ -24,8 +24,10 @@ no real client names/PII in the app.
   **web_search** server tool for research. Key in `.env` as `ANTHROPIC_API_KEY`.
   **Cost model**: the dominant per-run cost is web-search fees (~1p/search, not
   the model). **Test mode** (toggle on `/agents`, persisted as Setting
-  `test_mode`) runs on Haiku 4.5 + caps searches to 2 (~2–3p/run) for cheap
-  tuning; off = full Sonnet + 5 searches. `resolveRunModel()` in
+  `test_mode`) runs on **Haiku 5.5** ($0.10/$0.50 per MTok) + caps searches to
+  2 (~2p/run, almost all of it search fees) for cheap tuning; off = full
+  Sonnet 5 + 5 searches (~10–15p). `ANTHROPIC_TEST_MODEL` / `ANTHROPIC_MODEL`
+  override either without a code change. `resolveRunModel()` in
   `lib/anthropic.ts` is the single source both `web.ts` and `summariseItem` use.
 - Server logic = server actions in `app/actions/*` + `lib/*`. No separate API.
 
@@ -38,7 +40,7 @@ npm run dev       # http://localhost:3000 — starts the research worker too
 npm run dev:app   # the web app on its own (no worker)
 npm run update    # pull latest + install + migrate (keeps data); then npm run dev
 npm run backup    # timestamped copy of prisma/dev.db
-npm run doctor    # diagnose the AI path: key → Claude call → live web search
+npm run doctor    # BOTH models (full + test) × every request shape the app sends
 npm run db:check  # verify stored values still match the schema
 npm run stop      # kill anything Beacon left running (frees the engine file)
 npm run test:video # free, no-API gate for the video pipeline
@@ -50,6 +52,14 @@ npm run portal:login # YOU sign in, in a real browser; the session is reused
 npm run portal:check # session valid? + how many passwords the profile holds
 npm run portal:forget # delete the saved session entirely
 ```
+**Fresh cloud container** (empty `node_modules`, no database): `npm install`,
+then `node scripts/ensure-env.mjs`, THEN `npx prisma generate`, then
+`npx prisma migrate deploy && node scripts/reseed.mjs`. The order matters:
+Prisma only records where `.env` lives if the file exists at generate time, so
+generating first leaves standalone scripts (`db:check`) unable to find
+`DATABASE_URL`. A cloud session's API key comes from the environment settings,
+not `.env` — and a real environment variable always wins over `.env`.
+
 Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 `.env` is git-ignored and auto-created from `.env.example` (predev/presetup).
 
@@ -267,6 +277,29 @@ confident-but-wrong AI specifics reaching a client.
 - **`node --check` proves syntax, not that a script runs.** Execute new scripts
   far enough to see their imports resolve — a missing-dependency message is
   proof the module graph loaded; a clean `--check` is proof of nothing.
+- **Test mode runs on Haiku 5.5, and Haiku 4.5 was silently broken there.**
+  `summariseItem` sends `output_config: { effort: "low" }`, and Haiku 4.5
+  rejects `effort` with a 400 — so with test mode on, every inbox triage and page
+  assessment call failed, and nothing checked the test model to notice. Haiku
+  5.5 accepts `effort`, thinks by default (thinking counts toward `max_tokens`,
+  hence `summariseItem`'s 4096 rather than 1024), counts text as ~30% more
+  tokens, and has **no server-side refusal fallback**. Its price MUST be matched
+  before the generic `includes("haiku")` in `cost.ts`, or every test run is shown
+  at ~10× its real cost.
+- **`summariseItem` returning null means "nothing usable", not only "no key".**
+  It returns null for a missing key, a refusal, and an empty reply. Callers that
+  explain the failure must check `hasApiKey()` before saying "no API key" — see
+  `assessPage.ts`. Never store an empty or declined reply as a summary.
+- **The web-search tool type is remembered PER MODEL.** `web_search_20260209` is
+  documented for Opus/Sonnet, not Haiku. A single shared "what worked" value let
+  a Sonnet run lock a later Haiku run in the same process to a type it rejects,
+  with no fallback. `searchToolTypesFor(model)` / `rememberSearchToolType()` in
+  `lib/research/web.ts`; asserted in `npm run test:video`.
+- **`doctor` checks both models with the app's real request shapes** — a plain
+  call, `effort`, a JSON-Schema reply and web search — and reads replies by
+  block type, since current models can open with a thinking block. Its model
+  defaults duplicate `lib/anthropic.ts` (it is `.mjs` and can't import `.ts`);
+  `npm run test:video` compares the two source texts so they can't drift.
 - **A job's kind is never left to the default.** `ResearchJob.kind` defaults to
   `"video"`, and `requeueSource()` created jobs without one — so **Try again**
   on a watched portal page produced a *video* job, and the worker's `if/else`
@@ -349,6 +382,11 @@ confident-but-wrong AI specifics reaching a client.
   store → compare, no model call), preview that reports embeds and the hosts it
   may not follow, and **Assess → pending Finding** so a portal page reaches the
   inbox and the existing approve → opportunity flow.
+- Cost & verification: test mode moved to Haiku 5.5 (~7–8× cheaper per token,
+  and it fixes a test mode that was failing on `effort`); `doctor` now verifies
+  both models. **Awaiting the live run**: once the cloud environment has a
+  spend-capped `ANTHROPIC_API_KEY`, run `npm run doctor`, then one test-mode
+  Finder run, assessment and video summary against Sonnet, and report real pence.
 - Diagnosability: every run shows a step timeline with the job kind, times and
   the step it stopped at; the retry mis-routing that caused a page to be fetched
   as a YouTube video is fixed.

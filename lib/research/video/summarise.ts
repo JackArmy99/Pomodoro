@@ -74,7 +74,13 @@ const CHARS_PER_PASS = 120_000;
 // Sonnet's, so the cap is per-model and every call streams — streaming is what
 // makes a large cap safe, since a big non-streaming reply can outlive the
 // HTTP timeout.
-function maxTokensFor(model: string): number {
+//
+// Haiku 5.5 is not Haiku 4.5: it has a 128K output ceiling, thinks by default
+// (thinking counts toward this cap), and its tokenizer turns the same notes into
+// ~30% more tokens. Holding it at 4.5's 16000 would truncate exactly the long
+// webinars this exists for. Exported so the gate can pin both numbers.
+export function maxTokensFor(model: string): number {
+  if (model.includes("haiku-5")) return 32000;
   return model.includes("haiku") ? 16000 : 32000;
 }
 
@@ -202,6 +208,11 @@ function renderSegments(segments: Segment[]): string {
 }
 
 class Truncated extends Error {}
+// The model declined. Its own error rather than "malformed JSON": a refusal
+// carries no JSON at all, and reporting it as a parsing fault would send
+// everyone looking in the wrong place. Haiku 5.5 runs safety classifiers with
+// no server-side fallback model, so this can now happen in test mode.
+class Refused extends Error {}
 
 function parseJsonObject(text: string): any {
   const cleaned = text
@@ -419,6 +430,7 @@ export async function summariseTranscript(input: {
     }
 
     usage.push(usageOf(stage, model, response));
+    if (response.stop_reason === "refusal") throw new Refused();
     if (response.stop_reason === "max_tokens") throw new Truncated();
     return parseJsonObject(textOf(response));
   }
@@ -576,6 +588,14 @@ export async function summariseTranscript(input: {
       usage,
     };
   } catch (err: any) {
+    if (err instanceof Refused) {
+      return {
+        ok: false,
+        code: "refused",
+        message: "The model declined to summarise this transcript.",
+        usage,
+      };
+    }
     if (err instanceof Truncated) {
       return {
         ok: false,

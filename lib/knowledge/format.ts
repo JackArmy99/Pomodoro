@@ -77,6 +77,10 @@ export function errorAdvice(
       return "Couldn't load this video. It may be private or deleted — or this machine couldn't reach YouTube (proxy, VPN or no connection). Open the link in your browser to check, then retry.";
     case "no_api_key":
       return "There's no ANTHROPIC_API_KEY set, so there was nothing to summarise with. The transcript is stored in full — add the key and summarise again.";
+    case "no_summary":
+      return "The model declined this item or returned nothing usable, so nothing was written to the inbox. The source is stored in full — try again. If it keeps happening on the same item, tell Claude.";
+    case "refused":
+      return "The model declined to summarise this. Nothing was lost — the source is stored in full. Try again; if it keeps declining, tell Claude which item it was.";
     case "bad_json":
       return "The model's summary came back malformed. Nothing was lost — press Summarise again.";
     case "no_valid_points":

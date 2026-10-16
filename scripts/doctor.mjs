@@ -60,6 +60,28 @@ function explain(err) {
     info("→ The request was rejected — see the message above.");
 }
 
+// Read the reply by block type, never by position: current models can open
+// with a thinking block, so content[0] is not necessarily the answer.
+function textOf(r) {
+  return r.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+}
+
+// Rough price, per million tokens, mirroring lib/research/cost.ts. Only for the
+// "this check cost about Xp" line — the app's own costs come from cost.ts.
+function approxMicroUsd(model, usage) {
+  const inTok = usage?.input_tokens ?? 0;
+  const outTok = usage?.output_tokens ?? 0;
+  let rate = [2, 10]; // sonnet
+  if (model.includes("haiku-5")) rate = inTok > 100_000 ? [0.5, 2.5] : [0.1, 0.5];
+  else if (model.includes("haiku")) rate = [1, 5];
+  else if (model.includes("opus")) rate = [5, 25];
+  return Math.round(inTok * rate[0] + outTok * rate[1]);
+}
+
 async function main() {
   console.log("\n🩺 Beacon doctor — checking the research path\n");
 
@@ -74,76 +96,162 @@ async function main() {
       info("Delete the leading `# ` so the line starts with ANTHROPIC_API_KEY=");
       info('It should read:  ANTHROPIC_API_KEY="sk-ant-..."');
     } else {
-      bad("ANTHROPIC_API_KEY is not set in .env");
-      info('Add a line:  ANTHROPIC_API_KEY="sk-ant-..."   then re-run this.');
+      bad("ANTHROPIC_API_KEY is not set.");
+      info('On your laptop: add a line to .env:  ANTHROPIC_API_KEY="sk-ant-..."');
     }
+    // A cloud session reads the key from its environment, not from .env.
+    info("In a cloud session: add it as an environment variable in the environment");
+    info("settings, then start a NEW session — a running one won't see it.");
     process.exit(1);
   }
   ok(`ANTHROPIC_API_KEY found (${key.slice(0, 8)}…${key.slice(-4)})`);
 
-  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
-  ok(`Model: ${model}`);
+  // Both models the app uses, each checked with the request shapes it really
+  // sends. Test mode used to be checked by nothing at all — which is how it
+  // could sit broken: Haiku 4.5 rejects `effort`, and summariseItem sends it.
+  //
+  // These defaults MUST match lib/anthropic.ts (this is a .mjs file, so it
+  // can't import that .ts module — see CLAUDE.md). `npm run test:portal`
+  // compares the two so they can't drift apart.
+  const FULL_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+  const TEST_MODEL = process.env.ANTHROPIC_TEST_MODEL || "claude-haiku-5-5";
+  const models = [{ label: "Full quality", model: FULL_MODEL }];
+  if (TEST_MODEL !== FULL_MODEL) models.push({ label: "Test mode", model: TEST_MODEL });
 
   const client = new Anthropic({ apiKey: key });
+  const results = [];
+  let spent = 0; // micro-USD, approximate — for "what did this check cost"
 
-  // 2. Basic call — proves key, credit and model.
-  console.log("\n— Test 1: basic Claude call —");
-  try {
-    const r = await client.messages.create({
-      model,
-      max_tokens: 16,
-      messages: [{ role: "user", content: "Reply with just: OK" }],
-    });
-    const text = r.content.find((b) => b.type === "text")?.text?.trim();
-    ok(`Claude replied: "${text}"`);
-    info(`tokens in/out: ${r.usage?.input_tokens}/${r.usage?.output_tokens}`);
-  } catch (err) {
-    bad("Basic Claude call failed — the agents cannot work until this passes.");
-    explain(err);
-    process.exit(1);
-  }
+  for (const { label, model } of models) {
+    console.log(`\n— ${label}: ${model} —`);
+    const row = { label, model, basic: false, effort: false, schema: false, search: null };
 
-  // 3. Web search — the tool the Finder depends on.
-  console.log("\n— Test 2: web search tool —");
-  const toolTypes = ["web_search_20260209", "web_search_20250305"];
-  let working = null;
-  for (const type of toolTypes) {
+    // 1. A plain call: the key, the credit and the model name.
+    // max_tokens leaves room for thinking, which current models do by default
+    // and which counts toward the cap — a tiny cap can return no text at all.
     try {
       const r = await client.messages.create({
         model,
-        max_tokens: 400,
-        tools: [{ type, name: "web_search", max_uses: 1 }],
-        messages: [
-          {
-            role: "user",
-            content:
-              "Use web search to find one recent news item about CCH Tagetik. Reply in one sentence.",
-          },
-        ],
+        max_tokens: 1024,
+        messages: [{ role: "user", content: "Reply with just: OK" }],
       });
-      const searched = r.content.some((b) => b.type === "web_search_tool_result");
-      const text = r.content.find((b) => b.type === "text")?.text?.trim() ?? "";
-      ok(`Web search works with tool type "${type}"`);
-      info(searched ? "Search results were returned." : "No search block (model may not have needed one).");
-      info(`Sample answer: ${text.slice(0, 160)}`);
-      working = type;
-      break;
+      spent += approxMicroUsd(model, r.usage);
+      const text = textOf(r);
+      if (text) {
+        ok(`Basic call: "${text.slice(0, 40)}"`);
+        row.basic = true;
+      } else {
+        bad(`Basic call returned no text (stop_reason ${r.stop_reason}).`);
+      }
     } catch (err) {
-      bad(`Tool type "${type}" rejected.`);
+      bad("Basic call failed — nothing on this model can work until this passes.");
+      explain(err);
+      results.push(row);
+      continue;
+    }
+
+    // 2. What summariseItem sends: a low effort level. Inbox triage and page
+    //    assessment both go through it.
+    try {
+      const r = await client.messages.create({
+        model,
+        max_tokens: 1024,
+        output_config: { effort: "low" },
+        messages: [{ role: "user", content: "Reply with just: OK" }],
+      });
+      spent += approxMicroUsd(model, r.usage);
+      ok("Effort setting accepted (inbox triage and page assessment will work)");
+      row.effort = true;
+    } catch (err) {
+      bad("Effort setting rejected — inbox triage and page assessment will fail on this model.");
       explain(err);
     }
+
+    // 3. What the video summariser sends: a reply constrained to a JSON Schema.
+    try {
+      const r = await client.messages.create({
+        model,
+        max_tokens: 1024,
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              properties: { ok: { type: "boolean" } },
+              required: ["ok"],
+              additionalProperties: false,
+            },
+          },
+        },
+        messages: [{ role: "user", content: 'Return {"ok": true}.' }],
+      });
+      spent += approxMicroUsd(model, r.usage);
+      const parsed = JSON.parse(textOf(r) || "null");
+      if (parsed?.ok === true) {
+        ok("Structured JSON replies work (video summaries will parse)");
+        row.schema = true;
+      } else {
+        bad(`Structured reply came back in an unexpected shape: ${textOf(r).slice(0, 80)}`);
+      }
+    } catch (err) {
+      bad("Structured JSON replies failed — video summaries fall back to unconstrained JSON on this model.");
+      explain(err);
+    }
+
+    // 4. Web search — the tool the Finder depends on. Report which tool type
+    //    this model accepts: the newer one is documented for Opus and Sonnet,
+    //    and the app now remembers the answer per model.
+    for (const type of ["web_search_20260209", "web_search_20250305"]) {
+      try {
+        const r = await client.messages.create({
+          model,
+          max_tokens: 1024,
+          tools: [{ type, name: "web_search", max_uses: 1 }],
+          messages: [
+            {
+              role: "user",
+              content:
+                "Use web search to find one recent news item about CCH Tagetik. Reply in one sentence.",
+            },
+          ],
+        });
+        spent += approxMicroUsd(model, r.usage) + 10_000; // ~$0.01 per search
+        const searched = r.content.some((b) => b.type === "web_search_tool_result");
+        ok(`Web search works with "${type}"${searched ? "" : " (no search was needed)"}`);
+        info(`Sample: ${textOf(r).slice(0, 140)}`);
+        row.search = type;
+        break;
+      } catch (err) {
+        info(`"${type}" not accepted on this model — trying the next.`);
+        if (type === "web_search_20250305") {
+          bad("Web search is not available on this model — the Finder can't research with it.");
+          explain(err);
+        }
+      }
+    }
+
+    results.push(row);
   }
 
-  if (!working) {
-    bad("\nWeb search is not available — the Finder can't research.");
-    info("Check that web search is enabled for your API account/organisation.");
+  // One line per model, so the verdict doesn't need reading the whole log.
+  console.log("\n— Summary —");
+  let failed = false;
+  for (const r of results) {
+    const parts = [
+      r.basic ? "call ✓" : "call ✗",
+      r.effort ? "effort ✓" : "effort ✗",
+      r.schema ? "JSON ✓" : "JSON ✗",
+      r.search ? `search ✓ (${r.search})` : "search ✗",
+    ];
+    const allGood = r.basic && r.effort && r.schema && r.search;
+    if (!allGood) failed = true;
+    console.log(`${allGood ? "✅" : "❌"} ${r.label.padEnd(12)} ${r.model.padEnd(18)} ${parts.join(" · ")}`);
+  }
+  info(`This check cost roughly ${(spent / 1_000_000 * 0.79 * 100).toFixed(1)}p.`);
+  if (failed) {
+    console.log("");
+    bad("Some checks failed — see above. The model named on a ❌ line is the one to fix.");
     process.exit(1);
-  }
-
-  if (working !== toolTypes[0]) {
-    info(
-      `\nNote: the app prefers "${toolTypes[0]}" but will fall back to "${working}".`,
-    );
   }
 
   console.log("\n— Test 3: database contents —");

@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { recordStep, noteStep } from "@/lib/knowledge/runLog";
-import { summariseItem } from "@/lib/anthropic";
+import { summariseItem, hasApiKey } from "@/lib/anthropic";
 import { microUsd } from "@/lib/research/cost";
 import { upsertSourceFinding } from "@/lib/knowledge/finding";
 
@@ -111,11 +111,25 @@ export async function runPageAssessJob(ctx: Ctx): Promise<void> {
   });
 
   if (!summary) {
-    await finish(prisma, job.id, "needs_input", {
-      code: "no_api_key",
-      message:
-        "There's no ANTHROPIC_API_KEY set, so there was nothing to assess with. The page is stored in full — add the key and try again.",
-    });
+    // Two different failures with the same empty result — never report one as
+    // the other. A missing key is a setup problem; a decline or an empty reply
+    // is about this page, and retrying or rewording is the fix.
+    await finish(
+      prisma,
+      job.id,
+      "needs_input",
+      hasApiKey()
+        ? {
+            code: "no_summary",
+            message:
+              "The model declined this page or returned nothing usable. The page is stored in full — try again.",
+          }
+        : {
+            code: "no_api_key",
+            message:
+              "There's no ANTHROPIC_API_KEY set, so there was nothing to assess with. The page is stored in full — add the key and try again.",
+          },
+    );
     return;
   }
 

@@ -2,10 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/db";
 
 // The full-quality model: whatever ANTHROPIC_MODEL is set to, else Sonnet 5.
-const FULL_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
-// The cheap model used while tuning. Haiku 4.5 is the cheapest sensible Claude
-// model that still drives web search — half Sonnet's token price.
-const TEST_MODEL = "claude-haiku-4-5";
+export const FULL_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+// The cheap model used while tuning. Haiku 5.5 costs $0.10/$0.50 per million
+// tokens against Haiku 4.5's $1/$5 — roughly 7–8x cheaper once its larger
+// tokenizer is allowed for. It also accepts `effort`, which Haiku 4.5 rejects:
+// summariseItem sends `effort: "low"`, so on 4.5 every test-mode triage and
+// assessment call was a 400. ANTHROPIC_TEST_MODEL in .env switches it back
+// without a code change, the same way ANTHROPIC_MODEL sets the full model.
+export const TEST_MODEL = process.env.ANTHROPIC_TEST_MODEL || "claude-haiku-5-5";
 
 export function hasApiKey(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
@@ -108,7 +112,10 @@ export async function summariseItem(input: {
 
   const response = await client.messages.create({
     model,
-    max_tokens: 1024,
+    // Room for thinking as well as the answer. Haiku 5.5 (and the current
+    // Sonnet/Opus models) think by default, and thinking counts toward this
+    // cap: at 1024 a model could spend the lot reasoning and return no text.
+    max_tokens: 4096,
     output_config: { effort: "low" },
     system,
     messages: [{ role: "user", content: user }],
@@ -119,6 +126,25 @@ export async function summariseItem(input: {
     .map((b) => b.text)
     .join("")
     .trim();
+
+  // A decline or a cut-off is not a summary. Storing either as one would put a
+  // blank or half-sentence item in the inbox looking like real analysis, so
+  // say nothing and let the caller leave the item as it was. Haiku 5.5 runs
+  // safety classifiers and, unlike the Opus/Sonnet models, has no server-side
+  // fallback model to retry on.
+  if (response.stop_reason === "refusal") {
+    console.warn(
+      `[summariseItem] ${model} declined "${input.title.slice(0, 80)}"` +
+        (response.stop_details?.category ? ` (${response.stop_details.category})` : ""),
+    );
+    return null;
+  }
+  if (!text) {
+    console.warn(
+      `[summariseItem] ${model} returned no text (stop_reason ${response.stop_reason}).`,
+    );
+    return null;
+  }
 
   const usage = {
     model,

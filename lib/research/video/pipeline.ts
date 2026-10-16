@@ -310,6 +310,9 @@ async function summariseVersion(
       "bad_json",
       "no_valid_points",
       "truncated",
+      // A decline is about this transcript, not a broken system: the evidence
+      // is stored, and a retry or the full model is the way forward.
+      "refused",
     ];
     await prisma.analysisRevision.create({
       data: {

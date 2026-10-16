@@ -7,7 +7,18 @@
 
 export type Rates = { inRate: number; outRate: number }; // $ per million tokens
 
-export function ratesFor(model: string): Rates {
+// Haiku 5.5 has two rate cards, chosen by how long the prompt is.
+const HAIKU_55_LONG_PROMPT = 100_000;
+
+export function ratesFor(model: string, inputTokens = 0): Rates {
+  // Haiku 5.5 MUST be matched before the generic "haiku" test below. That test
+  // prices Haiku 4.5 at $1/$5; letting 5.5 fall through to it would show every
+  // test-mode run at about ten times what it actually cost.
+  if (model.includes("haiku-5")) {
+    return inputTokens > HAIKU_55_LONG_PROMPT
+      ? { inRate: 0.5, outRate: 2.5 }
+      : { inRate: 0.1, outRate: 0.5 };
+  }
   if (model.includes("opus")) return { inRate: 5, outRate: 25 };
   if (model.includes("haiku")) return { inRate: 1, outRate: 5 };
   if (model.includes("fable") || model.includes("mythos"))
@@ -20,7 +31,7 @@ export function microUsd(
   inputTokens: number,
   outputTokens: number,
 ): number {
-  const { inRate, outRate } = ratesFor(model);
+  const { inRate, outRate } = ratesFor(model, inputTokens);
   return Math.round(inputTokens * inRate + outputTokens * outRate);
 }
 

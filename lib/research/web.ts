@@ -30,8 +30,23 @@ function splitDomains(csv?: string | null): string[] {
 }
 
 // Prefer the current web-search tool; fall back if the account/model rejects it.
-const SEARCH_TOOL_TYPES = ["web_search_20260209", "web_search_20250305"];
-let workingToolType: string | null = null;
+export const SEARCH_TOOL_TYPES = ["web_search_20260209", "web_search_20250305"];
+
+// What worked is remembered PER MODEL. It used to be one shared value, so once a
+// full-quality (Sonnet) run recorded the newer tool type, every later call —
+// test mode on Haiku included — tried only that type. The newer variant is
+// documented for Opus and Sonnet, not Haiku, so a test-mode run after a full
+// run in the same server process failed outright with no fallback.
+const workingToolType = new Map<string, string>();
+
+export function searchToolTypesFor(model: string): string[] {
+  const known = workingToolType.get(model);
+  return known ? [known] : SEARCH_TOOL_TYPES;
+}
+
+export function rememberSearchToolType(model: string, type: string): void {
+  workingToolType.set(model, type);
+}
 
 async function createWithSearch(
   client: Anthropic,
@@ -45,7 +60,7 @@ async function createWithSearch(
     maxUses?: number;
   },
 ): Promise<Anthropic.Message> {
-  const types = workingToolType ? [workingToolType] : SEARCH_TOOL_TYPES;
+  const types = searchToolTypesFor(params.model);
   let lastErr: unknown;
 
   for (const type of types) {
@@ -66,7 +81,7 @@ async function createWithSearch(
       };
       let messages = params.messages;
       let response = await client.messages.create({ ...base, messages });
-      workingToolType = type; // remember what works
+      rememberSearchToolType(params.model, type); // remember what works, for this model
 
       // web_search runs a server-side loop that can stop with `pause_turn`
       // when it hits its per-turn cap. Resume by re-sending the same messages
@@ -236,7 +251,10 @@ export async function webDeepDive(input: {
     model,
     system,
     messages: [{ role: "user", content: user }],
-    maxTokens: 1500,
+    // Thinking counts toward this cap on current models (Haiku 5.5 and Sonnet
+    // think by default), and so do the search turns: 1500 left too little for
+    // the 5–8 sentence briefing itself. Only tokens actually used are billed.
+    maxTokens: 4096,
     maxUses: Math.min(4, maxSearches),
   });
 
@@ -261,7 +279,7 @@ function estimateCostCents(response: Anthropic.Message, model: string): number {
   const u = response.usage;
   const inTok = u?.input_tokens ?? 0;
   const outTok = u?.output_tokens ?? 0;
-  const { inRate, outRate } = ratesFor(model);
+  const { inRate, outRate } = ratesFor(model, inTok);
   const dollars = (inTok * inRate + outTok * outRate) / 1_000_000;
   const searches = response.content.filter(
     (b) => b.type === "web_search_tool_result",

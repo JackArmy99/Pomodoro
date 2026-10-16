@@ -20,7 +20,15 @@ import {
   splitIntoPasses,
   EXTRACT_JSON_SCHEMA,
   CLASSIFY_JSON_SCHEMA,
+  maxTokensFor,
 } from "@/lib/research/video/summarise";
+import { ratesFor, microUsd } from "@/lib/research/cost";
+import {
+  searchToolTypesFor,
+  rememberSearchToolType,
+  SEARCH_TOOL_TYPES,
+} from "@/lib/research/web";
+import { readFileSync } from "node:fs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = mkdtempSync(join(tmpdir(), "beacon-videotest-"));
@@ -232,7 +240,63 @@ async function pipelineGuards(prisma: PrismaClient) {
   check("re-summarising clears a stale tick", !isVerifiedCurrent(findings[0]));
 }
 
+// Model choice, price and limits. All pure — no call is made — but each line
+// is a mistake that would either mis-report what was spent or quietly break
+// test mode, which is exactly where nobody looks.
+function modelGuards() {
+  console.log("\nModels, prices and limits");
+
+  // Price. Haiku 5.5 must never be shown at Haiku 4.5's price: the generic
+  // "haiku" match would bill it at roughly ten times its real cost.
+  const h55 = ratesFor("claude-haiku-5-5", 2_000);
+  check("Haiku 5.5 is priced at $0.10 / $0.50", h55.inRate === 0.1 && h55.outRate === 0.5,
+    JSON.stringify(h55));
+  const h55long = ratesFor("claude-haiku-5-5", 150_000);
+  check("Haiku 5.5 over 100K tokens uses the long-prompt card ($0.50 / $2.50)",
+    h55long.inRate === 0.5 && h55long.outRate === 2.5, JSON.stringify(h55long));
+  const h45 = ratesFor("claude-haiku-4-5");
+  check("Haiku 4.5 is still $1 / $5", h45.inRate === 1 && h45.outRate === 5);
+  const s5 = ratesFor("claude-sonnet-5");
+  check("Sonnet 5 is still $2 / $10", s5.inRate === 2 && s5.outRate === 10);
+  // A typical page assessment: ~3,000 tokens in, ~300 out.
+  check("a test-mode assessment costs under a tenth of a penny",
+    microUsd("claude-haiku-5-5", 3_000, 300) < 1_000,
+    `${microUsd("claude-haiku-5-5", 3_000, 300)} micro-USD`);
+
+  // Output room. Haiku 5.5 thinks by default and counts text as ~30% more
+  // tokens; at Haiku 4.5's cap, long webinar notes would be cut off.
+  check("Haiku 5.5 gets 32000 output tokens for notes", maxTokensFor("claude-haiku-5-5") === 32000);
+  check("Haiku 4.5 keeps 16000", maxTokensFor("claude-haiku-4-5") === 16000);
+  check("Sonnet keeps 32000", maxTokensFor("claude-sonnet-5") === 32000);
+
+  // Web-search tool type is remembered per model. One shared value let a
+  // Sonnet success lock Haiku to a tool type it doesn't accept.
+  const fresh = "claude-test-fresh-model";
+  check("an unseen model tries every tool type",
+    searchToolTypesFor(fresh).length === SEARCH_TOOL_TYPES.length);
+  rememberSearchToolType("claude-test-full", "web_search_20260209");
+  check("a full-model success does not narrow another model's options",
+    searchToolTypesFor("claude-test-other").length === SEARCH_TOOL_TYPES.length);
+  check("but it is remembered for the model it worked on",
+    searchToolTypesFor("claude-test-full").join() === "web_search_20260209");
+
+  // The model defaults live in two places — lib/anthropic.ts, and doctor.mjs,
+  // which can't import a .ts file. If they drift, doctor approves a model the
+  // app doesn't use. Compare the source text.
+  const lib = readFileSync(join(root, "lib", "anthropic.ts"), "utf8");
+  const doctor = readFileSync(join(root, "scripts", "doctor.mjs"), "utf8");
+  const pick = (src: string, env: string) =>
+    src.match(new RegExp(`process\\.env\\.${env}\\s*\\|\\|\\s*"([^"]+)"`))?.[1];
+  for (const env of ["ANTHROPIC_MODEL", "ANTHROPIC_TEST_MODEL"]) {
+    const a = pick(lib, env);
+    const b = pick(doctor, env);
+    check(`doctor checks the same default ${env} the app uses`, Boolean(a) && a === b,
+      `app ${a} · doctor ${b}`);
+  }
+}
+
 async function main() {
+  modelGuards();
   console.log("Building a throwaway database…");
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     cwd: root,
