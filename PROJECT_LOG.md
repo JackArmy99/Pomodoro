@@ -23,6 +23,18 @@ Jack asked to test the Tagetik video watcher; the session ran on his laptop.
 Lesson: "passes in the cloud" never meant "safe on the laptop". The gates had
 only ever run where there was no key, no profile and no Windows.
 
+Later the same day:
+- **Why sign-ins kept "expiring":** the Community login is a session-only
+  cookie (`__ac`), discarded whenever the browser closes. Beacon now saves and
+  restores it; `portal:login` proves it survives a restart.
+- **The webinar test answered the open question.** The player is Tagetik's own
+  video.js page serving a plain ~60 MB MP4 from `api.tagetik.com` (already
+  allowlisted). No captions — the transcript needs speech-to-text. Local
+  Whisper is the recommended route (free per run, nothing leaves the laptop).
+- **The Library's real structure is captured**, after fixing a sample script
+  that had silently failed on every preview (`__name` injected into page code).
+  The sweep parser can now be written against real markup.
+
 ## 2026-10 — Test mode on Haiku 5.5; doctor checks both models; a cloud key
 
 - **Why:** faster progress. The bottleneck was never credits, it was the test

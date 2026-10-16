@@ -54,13 +54,25 @@ no real client names/PII in the app.
   5.5 accepts `web_search_20260209`. Doctor itself costs ~10p, not ~2p. Still
   open: one test-mode Finder run, assessment and video summary on Haiku 5.5 vs
   Sonnet with real pence; whether Haiku 4.5 really failed on `effort` (optional).
-- **Webinar preview — blocked on sign-in:** the first real preview of
-  `https://community.tagetik.com/library/wb-product-demo-transform-capex-and-workforce-planning-with-cch-tagetik`
-  showed the portal session had EXPIRED (redirect to `/auth/login`). Jack runs
-  `npm run portal:login` (it needs him to press Enter, so a session can't run
-  it for him); then re-run the preview and read the embeds / Watch target.
-  Sessions on a laptop can run the preview themselves — see
-  "Running portal checks from a laptop session" below.
+- **Webinar answer (16 Oct): no captions, but the easiest possible media.**
+  The webinar page embeds `edit-video.tagetik.com/media/<slug>/embed_player`
+  (→ `api.tagetik.com/video/media/<slug>/embed_player`), a video.js player
+  serving a **plain MP4** (1080p, ~60 MB for this demo, byte ranges, needs the
+  signed-in session) from `api.tagetik.com/video/media/<slug>/_video/….mp4`.
+  Both hosts are already allowlisted (subdomains of tagetik.com). **No caption
+  track, no HLS** — so a transcript needs speech-to-text. **Decision pending
+  with Jack:** local Whisper on the laptop (free per run, nothing leaves the
+  machine — recommended) vs a cloud speech-to-text API (Claude can't take
+  audio). Then the existing summariser takes the transcript.
+- **Library structure captured — the sweep parser can be written.** Listing:
+  `div.infinite-scroll-component` of `div.container` items (15 per load,
+  infinite scroll). Each item's text: `<size> | <ext>` / `Download` /
+  `<Category> | <Month D, YYYY>` / `<Title>` / `<Description>` / `Read More`;
+  links: `/api/cms/<section>/<slug>/@download` (file) and `/<section>/<slug>`
+  (detail page). Filters are query params (`?functional_topics=…`,
+  `?regions=…`, `sort_on=upload_date:descending`). Worth checking first: the
+  site has a `/api/cms` backend that may list items as JSON, which would beat
+  scraping the page.
 - **Next build once those land:** the Library sweep (design settled — see
   PROJECT_LOG "Library sweep"). Offered and not yet built: `npm run report`
   (one paste-able block of versions, settings and the last jobs' step
@@ -424,6 +436,22 @@ confident-but-wrong AI specifics reaching a client.
   it BEFORE a preview reports back. `portal:check` and `portal:login` test the
   **Library**, not the homepage: the homepage loads signed-out, so a check there
   could only ever pass ("1 cookie" while signed out).
+- **The Community login is a session-only cookie (`__ac`), so Beacon keeps it.**
+  Chromium drops cookies without an expiry when the browser closes — even in a
+  persistent profile — so every sign-in vanished the moment the window shut
+  (that was the "expired session"). `portal:login` now detects the sign-in by
+  itself (no "press Enter"; it couldn't work when a session launched it, and the
+  window often opens BEHIND the terminal), saves cookies + local/session storage
+  to `beacon-session.json` inside the profile folder via `saveSession()`, and
+  `openContext()` restores it. Then it closes, reopens and checks the sign-in
+  survived. Never the password; `portal:forget` deletes it with the profile; it
+  lasts as long as the site keeps the session alive.
+- **Code that runs INSIDE the page must be passed as a string.** Under tsx the
+  compiler wraps named functions in a `__name()` helper that exists in Node but
+  not in the browser: `page.evaluate(() => { function f(){…} })` throws
+  "__name is not defined". `browser.ts` `sample()` failed like this on every
+  preview, and a `.catch(() => null)` hid it — the structure panel never showed.
+  See `SAMPLE_SCRIPT`.
 - **The Playwright version is pinned in the setup marker.** The browser
   download belongs to one Playwright release; restoring plain `playwright` after
   an update installed a newer release that wanted a browser nobody had

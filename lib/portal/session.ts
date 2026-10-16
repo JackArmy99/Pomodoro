@@ -103,16 +103,105 @@ export function inspectProfile(): ProfileContents {
 
 export type LaunchOptions = { headed?: boolean };
 
-// A persistent context keeps cookies between runs — that IS the saved session.
+// The Community login only lasts while the browser stays open: its session
+// cookie has no expiry date, and Chromium discards such cookies when the
+// browser closes — even in a persistent profile. Proven on Jack's laptop: a
+// sign-in that worked was gone the moment the window reopened. So Beacon keeps
+// the session itself, in a file inside the profile folder:
+//   - never the password — only what the site handed out after Jack signed in;
+//   - inside PROFILE_DIR, so `portal:forget` deletes it with everything else,
+//     and the git-ignored storage/ folder keeps it off GitHub;
+//   - restored only into this browser, which the allowlist still confines.
+// It lasts as long as the SITE keeps the session alive; when that ends, the
+// pipeline reports "signed out" and Jack runs portal:login again.
+export const SESSION_FILE = join(PROFILE_DIR, "beacon-session.json");
+
+type SavedSession = {
+  savedAt: string;
+  cookies: any[];
+  // localStorage and sessionStorage, per origin. sessionStorage is captured
+  // because some sites keep the login token there, and Playwright's own
+  // storageState() leaves it out.
+  local: { origin: string; items: { name: string; value: string }[] }[];
+  session: { origin: string; items: { name: string; value: string }[] }[];
+};
+
+// Called by portal:login right after Jack signs in, while the window is open.
+export async function saveSession(context: any, page: any): Promise<{
+  sessionOnlyCookies: string[];
+  localKeys: string[];
+  sessionKeys: string[];
+}> {
+  const state = await context.storageState();
+  const sessionItems = await page
+    .evaluate(() =>
+      Object.keys(sessionStorage).map((name) => ({
+        name,
+        value: sessionStorage.getItem(name) ?? "",
+      })),
+    )
+    .catch(() => []);
+  const origin = new URL(page.url()).origin;
+
+  const saved: SavedSession = {
+    savedAt: new Date().toISOString(),
+    cookies: state.cookies ?? [],
+    local: (state.origins ?? []).map((o: any) => ({
+      origin: o.origin,
+      items: o.localStorage ?? [],
+    })),
+    session: sessionItems.length ? [{ origin, items: sessionItems }] : [],
+  };
+  writeFileSync(SESSION_FILE, JSON.stringify(saved));
+
+  // Names only, for the diagnosis — never values.
+  return {
+    sessionOnlyCookies: saved.cookies
+      .filter((c) => c.expires === -1)
+      .map((c) => `${c.domain} ${c.name}`),
+    localKeys: saved.local.flatMap((o) => o.items.map((i) => `${o.origin} ${i.name}`)),
+    sessionKeys: saved.session.flatMap((o) => o.items.map((i) => `${o.origin} ${i.name}`)),
+  };
+}
+
+async function restoreSession(context: any): Promise<void> {
+  if (!existsSync(SESSION_FILE)) return;
+  let saved: SavedSession;
+  try {
+    saved = JSON.parse(readFileSync(SESSION_FILE, "utf8"));
+  } catch {
+    return; // unreadable — behave as signed out, portal:login fixes it
+  }
+  if (saved.cookies?.length) await context.addCookies(saved.cookies);
+  for (const kind of ["local", "session"] as const) {
+    for (const entry of saved[kind] ?? []) {
+      await context.addInitScript(
+        ({ origin, items, kind }: any) => {
+          if (location.origin !== origin) return;
+          const store = kind === "local" ? localStorage : sessionStorage;
+          for (const { name, value } of items) {
+            if (store.getItem(name) === null) store.setItem(name, value);
+          }
+        },
+        { origin: entry.origin, items: entry.items, kind },
+      );
+    }
+  }
+}
+
+// A persistent context keeps long-lived cookies between runs; restoreSession
+// adds back the session-only login the site uses.
 export async function openContext({ headed = false }: LaunchOptions = {}) {
   const playwright = await loadPlaywright();
   mkdirSync(PROFILE_DIR, { recursive: true });
   writeNoPasswordManagerPrefs();
 
-  return playwright.chromium.launchPersistentContext(PROFILE_DIR, {
+  const context = await playwright.chromium.launchPersistentContext(PROFILE_DIR, {
     headless: !headed,
     viewport: { width: 1280, height: 900 },
     // No stealth flags, no spoofed fingerprint, no proxy. This identifies
     // itself as what it is: an ordinary automated Chromium.
   });
+  await restoreSession(context);
+  return context;
 }

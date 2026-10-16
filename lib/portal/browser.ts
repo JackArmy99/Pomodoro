@@ -15,6 +15,46 @@ export type StructureSample = {
   }[];
 };
 
+// Runs inside the page. Plain ES5-style JavaScript in a string so no build
+// step can inject helpers into it (see sample() below). It finds the element
+// whose children look most like a list — several siblings, each with a link
+// and some text — and describes the first six.
+export const SAMPLE_SCRIPT = `(() => {
+  function score(el) {
+    var kids = Array.from(el.children);
+    if (kids.length < 3) return 0;
+    var withLinks = kids.filter(function (k) {
+      return k.querySelector("a[href]") && (k.innerText || "").trim();
+    });
+    return withLinks.length >= 3 ? withLinks.length : 0;
+  }
+  var best = null, bestScore = 0;
+  Array.from(document.querySelectorAll("body *")).forEach(function (el) {
+    var s = score(el);
+    if (s > bestScore) { bestScore = s; best = el; }
+  });
+  if (!best) return { container: null, items: [] };
+  var items = Array.from(best.children).slice(0, 6).map(function (k) {
+    var anchors = Array.from(k.querySelectorAll("a[href]")).map(function (a) {
+      return { href: a.href, text: (a.innerText || "").trim().slice(0, 120) };
+    });
+    return {
+      className: String(k.className || "").slice(0, 200),
+      tag: k.tagName.toLowerCase(),
+      text: (k.innerText || "").trim().slice(0, 600),
+      links: anchors.slice(0, 6)
+    };
+  });
+  return {
+    container: {
+      tag: best.tagName.toLowerCase(),
+      className: String(best.className || "").slice(0, 200),
+      childCount: best.children.length
+    },
+    items: items
+  };
+})()`;
+
 export type BrowserSession = {
   ctx: {
     goto(url: string): Promise<{ status: number | null }>;
@@ -74,54 +114,13 @@ export async function openBrowser(): Promise<BrowserSession> {
       // samples the repeating blocks so the parser can be written against what
       // is really there.
       async sample() {
-        return page.evaluate(() => {
-          // Find the element whose children look most like a list of items:
-          // several siblings, each containing a link and some text.
-          function score(el: Element): number {
-            const kids = Array.from(el.children);
-            if (kids.length < 3) return 0;
-            const withLinks = kids.filter(
-              (k) => k.querySelector("a[href]") && (k as HTMLElement).innerText?.trim(),
-            );
-            return withLinks.length >= 3 ? withLinks.length : 0;
-          }
-
-          let best: Element | null = null;
-          let bestScore = 0;
-          for (const el of Array.from(document.querySelectorAll("body *"))) {
-            const s = score(el);
-            if (s > bestScore) {
-              bestScore = s;
-              best = el;
-            }
-          }
-          if (!best) return { container: null, items: [] };
-
-          const items = Array.from(best.children)
-            .slice(0, 6)
-            .map((k) => {
-              const el = k as HTMLElement;
-              const anchors = Array.from(k.querySelectorAll("a[href]")).map((a) => ({
-                href: (a as HTMLAnchorElement).href,
-                text: (a as HTMLElement).innerText?.trim().slice(0, 120) ?? "",
-              }));
-              return {
-                className: el.className?.toString().slice(0, 200) ?? "",
-                tag: el.tagName.toLowerCase(),
-                text: el.innerText?.trim().slice(0, 600) ?? "",
-                links: anchors.slice(0, 6),
-              };
-            });
-
-          return {
-            container: {
-              tag: (best as HTMLElement).tagName.toLowerCase(),
-              className: (best as HTMLElement).className?.toString().slice(0, 200) ?? "",
-              childCount: best.children.length,
-            },
-            items,
-          };
-        });
+        // Passed as a STRING, deliberately. When this file runs under tsx (the
+        // worker), the compiler wraps named functions in a `__name(...)` helper
+        // that exists in Node but not in the page — so the old function form
+        // threw "__name is not defined" inside the browser, the caller's
+        // .catch() turned that into null, and the structure panel silently
+        // never appeared on any preview. A string is sent to the page verbatim.
+        return page.evaluate(SAMPLE_SCRIPT) as Promise<StructureSample>;
       },
     },
     // Are we looking at the sign-in page instead of the content behind it?
