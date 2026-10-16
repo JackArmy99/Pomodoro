@@ -12,11 +12,17 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-export const PROFILE_DIR = join(root, "storage", "portal-profile");
+// PORTAL_PROFILE_DIR exists for the test gate, which must NEVER touch the real
+// profile: it used to borrow this exact folder and delete it at the end — fine
+// in a cloud container, but on Jack's laptop that is his saved sign-in.
+export const PROFILE_DIR =
+  process.env.PORTAL_PROFILE_DIR || join(root, "storage", "portal-profile");
 
 export function hasProfile(): boolean {
   return existsSync(PROFILE_DIR);
 }
+
+export { looksLikeLoginUrl } from "./loginPage";
 
 // Playwright is a ~300MB install (it downloads a browser), so it is NOT a
 // dependency of the app. Nobody who never touches the portal should pay for it.

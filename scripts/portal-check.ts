@@ -3,10 +3,21 @@
 // Fetches one page and reports what it sees. Retrieves nothing else and stores
 // nothing — this exists so "is it signed in?" never has to be guessed at.
 import { checkUrl } from "../lib/portal/allowlist";
-import { hasProfile, openContext, inspectProfile, PROFILE_DIR } from "../lib/portal/session";
+import {
+  hasProfile,
+  openContext,
+  inspectProfile,
+  looksLikeLoginUrl,
+  PROFILE_DIR,
+} from "../lib/portal/session";
 
+// The Library, not the homepage. The homepage loads without signing in, so
+// checking it reported "signed in" while every real page was redirecting to the
+// login form — a check that could only ever pass.
 const url =
-  process.argv[2] || process.env.PORTAL_START_URL || "https://community.tagetik.com/";
+  process.argv[2] ||
+  process.env.PORTAL_CHECK_URL ||
+  "https://community.tagetik.com/library";
 
 async function main() {
   const verdict = checkUrl(url);
@@ -56,21 +67,26 @@ async function main() {
     const page = context.pages()[0] ?? (await context.newPage());
     const response = await page.goto(url, { waitUntil: "domcontentloaded" });
     const status = response?.status() ?? null;
+    // The site is a JavaScript app: an expired session shows "Please wait" and
+    // only THEN redirects to the login page. Judge the page once it has settled.
+    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+    const landed = page.url();
     const title = await page.title();
-    // A visible password box is the clearest sign we are looking at a login
-    // page rather than the content behind it.
     const passwordBoxes = await page.locator('input[type="password"]:visible').count();
+    const signedOut = looksLikeLoginUrl(landed) || passwordBoxes > 0;
     const cookies = await context.cookies();
 
     console.log(`\nCookies stored: ${cookies.length}`);
-    console.log(`URL:    ${url}`);
-    console.log(`Status: ${status}`);
-    console.log(`Title:  ${title}`);
+    console.log(`Checked: ${url}`);
+    if (landed !== url) console.log(`Landed:  ${landed}`);
+    console.log(`Status:  ${status}`);
+    console.log(`Title:   ${title}`);
     console.log(
-      passwordBoxes > 0
-        ? "\n🔒 A sign-in form is showing — the session has expired. Run:  npm run portal:login"
-        : "\n✅ Signed in (no sign-in form on that page).",
+      signedOut
+        ? "\n🔒 Not signed in — the portal sent us to its login page. Run:  npm run portal:login"
+        : "\n✅ Signed in — a members-only page loaded without a login form.",
     );
+    if (signedOut) process.exitCode = 1;
   } finally {
     await context.close();
   }

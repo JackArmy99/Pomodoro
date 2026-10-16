@@ -124,7 +124,7 @@ async function main() {
 
   for (const { label, model } of models) {
     console.log(`\n— ${label}: ${model} —`);
-    const row = { label, model, basic: false, effort: false, schema: false, search: null };
+    const row = { label, model, basic: false, effort: false, schema: false, search: null, searchOk: false };
 
     // 1. A plain call: the key, the credit and the model name.
     // max_tokens leaves room for thinking, which current models do by default
@@ -199,14 +199,19 @@ async function main() {
     }
 
     // 4. Web search — the tool the Finder depends on. Report which tool type
-    //    this model accepts: the newer one is documented for Opus and Sonnet,
-    //    and the app now remembers the answer per model.
+    //    this model accepts and the app remembers the answer per model.
+    //
+    //    "Not rejected" is NOT "works": a failed search comes back as a normal
+    //    reply with an error object inside, so this counts the actual results.
+    //    It once passed both models while each reply said the search had failed.
+    //    max_uses is 3, not 1: the newer tool spends uses on its own filtering
+    //    step, and a single use ran out before any result came back.
     for (const type of ["web_search_20260209", "web_search_20250305"]) {
       try {
         const r = await client.messages.create({
           model,
-          max_tokens: 1024,
-          tools: [{ type, name: "web_search", max_uses: 1 }],
+          max_tokens: 2048,
+          tools: [{ type, name: "web_search", max_uses: 3 }],
           messages: [
             {
               role: "user",
@@ -215,11 +220,28 @@ async function main() {
             },
           ],
         });
-        spent += approxMicroUsd(model, r.usage) + 10_000; // ~$0.01 per search
-        const searched = r.content.some((b) => b.type === "web_search_tool_result");
-        ok(`Web search works with "${type}"${searched ? "" : " (no search was needed)"}`);
+        const searches = r.usage?.server_tool_use?.web_search_requests ?? 1;
+        spent += approxMicroUsd(model, r.usage) + searches * 10_000; // ~$0.01 per search
+        row.search = type; // the tool type was accepted either way
+
+        let results = 0;
+        const errors = [];
+        for (const b of r.content) {
+          if (b.type !== "web_search_tool_result") continue;
+          if (Array.isArray(b.content)) results += b.content.length;
+          else if (b.content?.error_code) errors.push(b.content.error_code);
+        }
+        if (results > 0) {
+          ok(`Web search works with "${type}" — ${results} results`);
+          row.searchOk = true;
+        } else {
+          bad(
+            `"${type}" was accepted but returned no results` +
+              (errors.length ? ` (${[...new Set(errors)].join(", ")})` : ""),
+          );
+          info("Check web search is enabled for this API organisation in the Console.");
+        }
         info(`Sample: ${textOf(r).slice(0, 140)}`);
-        row.search = type;
         break;
       } catch (err) {
         info(`"${type}" not accepted on this model — trying the next.`);
@@ -241,9 +263,9 @@ async function main() {
       r.basic ? "call ✓" : "call ✗",
       r.effort ? "effort ✓" : "effort ✗",
       r.schema ? "JSON ✓" : "JSON ✗",
-      r.search ? `search ✓ (${r.search})` : "search ✗",
+      r.searchOk ? `search ✓ (${r.search})` : r.search ? `search ✗ no results` : "search ✗",
     ];
-    const allGood = r.basic && r.effort && r.schema && r.search;
+    const allGood = r.basic && r.effort && r.schema && r.searchOk;
     if (!allGood) failed = true;
     console.log(`${allGood ? "✅" : "❌"} ${r.label.padEnd(12)} ${r.model.padEnd(18)} ${parts.join(" · ")}`);
   }

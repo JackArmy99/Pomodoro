@@ -33,6 +33,13 @@ no real client names/PII in the app.
   this… in the most human way possible" — read as *considerate*, never
   *disguised*: no CAPTCHA solving, stealth, proxy rotation or spoofing.
 - **Never** run `npm audit fix --force`; Prisma stays on 5.22.
+- **Running portal checks from a laptop session.** When a session runs on
+  Jack's Windows laptop (cwd `C:\Users\armst\pomodoro`), it can drive the real
+  pipeline itself instead of asking for screenshots: a `.ts` script in the
+  scratchpad that calls `enqueuePage(url, { dryRun: true })` then
+  `runPageJob` + `closeRun`, run with `$env:TSX_TSCONFIG_PATH = "tsconfig.json";
+  npx tsx <script>` from the project folder. Stop the app first (shared profile
+  and engine file). Only `portal:login` needs Jack, because he types the password.
 - **Cloud sessions:** the API key comes from the environment's settings as the
   variable `ANTHROPIC_API_KEY` — a separate key in the spend-capped "Beacon –
   cloud testing" workspace. Network secrets do NOT work for it here:
@@ -42,15 +49,18 @@ no real client names/PII in the app.
 
 ### Open threads (update this list every session)
 
-- **Waiting on the live run (needs the cloud key):** `npm run doctor`; confirm
-  whether Haiku 4.5 test mode was failing on `effort`; one test-mode Finder run,
-  page assessment and video summary on Haiku 5.5 vs Sonnet, with real pence.
-  **Jack should not `npm run update` his laptop until this passes.**
-- **Waiting on Jack:** preview the webinar's own page
-  (`https://community.tagetik.com/library/wb-product-demo-transform-capex-and-workforce-planning-with-cch-tagetik`)
-  and send the **Embedded players and files** box, plus what clicking **Watch**
-  does in his own browser (new tab / pop-up player / download). That decides
-  the video path. Then judge one assessed item in `/research`.
+- **Done 16 Oct, on Jack's laptop:** `npm run doctor` passes for Sonnet 5 AND
+  Haiku 5.5 (call, effort, JSON schema, web search with real results). Haiku
+  5.5 accepts `web_search_20260209`. Doctor itself costs ~10p, not ~2p. Still
+  open: one test-mode Finder run, assessment and video summary on Haiku 5.5 vs
+  Sonnet with real pence; whether Haiku 4.5 really failed on `effort` (optional).
+- **Webinar preview — blocked on sign-in:** the first real preview of
+  `https://community.tagetik.com/library/wb-product-demo-transform-capex-and-workforce-planning-with-cch-tagetik`
+  showed the portal session had EXPIRED (redirect to `/auth/login`). Jack runs
+  `npm run portal:login` (it needs him to press Enter, so a session can't run
+  it for him); then re-run the preview and read the embeds / Watch target.
+  Sessions on a laptop can run the preview themselves — see
+  "Running portal checks from a laptop session" below.
 - **Next build once those land:** the Library sweep (design settled — see
   PROJECT_LOG "Library sweep"). Offered and not yet built: `npm run report`
   (one paste-able block of versions, settings and the last jobs' step
@@ -404,6 +414,35 @@ confident-but-wrong AI specifics reaching a client.
   and vendor pages written by other people, so the prompt says plainly that the
   item is data to summarise and never an instruction to follow — the rule the
   video prompts already carried.
+- **The Community site is a JavaScript app, and an expired session is a
+  redirect, not an error.** The first HTML says "Please wait"; then the real
+  content arrives — or, signed out, a redirect to `/auth/login?came_from=…`
+  (status 200 throughout). Reading at `domcontentloaded` captured "Please wait"
+  and presented it as the webinar. `browser.ts` now waits for `networkidle`
+  (15s cap), `signedOut()` checks the address via `looksLikeLoginUrl()`
+  (`lib/portal/loginPage.ts`) before the password box, and the pipeline checks
+  it BEFORE a preview reports back. `portal:check` and `portal:login` test the
+  **Library**, not the homepage: the homepage loads signed-out, so a check there
+  could only ever pass ("1 cookie" while signed out).
+- **The Playwright version is pinned in the setup marker.** The browser
+  download belongs to one Playwright release; restoring plain `playwright` after
+  an update installed a newer release that wanted a browser nobody had
+  downloaded ("Executable doesn't exist at …chrome-headless-shell.exe").
+  `portal-setup.mjs` records `version` in `storage/portal-installed.json`;
+  `restorePlaywright()` installs exactly that.
+- **Test gates must be safe on Jack's laptop, not just in the cloud.** Three
+  things only Windows showed: (1) a gate deleted the REAL `storage/portal-profile`
+  (his saved sign-in) during cleanup — gates now use `PORTAL_PROFILE_DIR` inside
+  their temp folder and refuse to run if it resolves elsewhere; (2) a "free" gate
+  made a paid model call because `.env` had a key — gates set
+  `ANTHROPIC_API_KEY = ""` (empty, not deleted: Prisma reloads deleted vars
+  from `.env`); (3) `execFileSync("npx")` needs `shell: true` on Windows, and
+  Windows won't delete a database a client still holds — disconnect every
+  client, and treat temp cleanup as best effort.
+- **Doctor's web-search check counts results.** A failed search is a normal
+  200 reply with an error object inside; "not rejected" passed both models while
+  each reply said the search had failed. `max_uses` is 3, since the newer tool
+  spends uses on its own filtering step.
 - **Playwright is an OPTIONAL dependency** (~300MB), declared in
   `types/playwright.d.ts` and loaded dynamically, so nobody who never touches
   the portal pays for it. `npm run portal:setup` installs it.

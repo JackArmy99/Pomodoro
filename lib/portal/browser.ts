@@ -1,4 +1,4 @@
-import { openContext } from "@/lib/portal/session";
+import { openContext, looksLikeLoginUrl } from "@/lib/portal/session";
 
 // A real browser page behind the same tiny interface the guardrails are tested
 // against. `lib/portal/fetch.ts` defines `goto` / `content` / `wait` precisely
@@ -42,6 +42,12 @@ export async function openBrowser(): Promise<BrowserSession> {
           waitUntil: "domcontentloaded",
           timeout: 30_000,
         });
+        // The Community site is a JavaScript app: the first HTML says "Please
+        // wait" and the real content (or a redirect to the login page) arrives
+        // a moment later. Reading at "domcontentloaded" captured the loader and
+        // nothing else. Wait for the network to go quiet, capped so a page that
+        // never settles (live chat, analytics polling) can't stall a run.
+        await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
         return { status: response?.status() ?? null };
       },
       async content() {
@@ -118,9 +124,12 @@ export async function openBrowser(): Promise<BrowserSession> {
         });
       },
     },
-    // A visible password box means the session has expired and we are looking
-    // at a sign-in page rather than the content behind it.
+    // Are we looking at the sign-in page instead of the content behind it?
+    // An expired session on the Community site REDIRECTS to /auth/login, so
+    // the address is the surest sign; a visible password box is the fallback
+    // for any portal that shows the form in place.
     async signedOut() {
+      if (looksLikeLoginUrl(page.url())) return true;
       try {
         return (await page.locator('input[type="password"]:visible').count()) > 0;
       } catch {

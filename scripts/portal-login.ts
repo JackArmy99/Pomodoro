@@ -7,10 +7,12 @@
 // which is what keeps this working if the portal ever adds SSO or 2FA.
 import { createInterface } from "node:readline";
 import { checkUrl } from "../lib/portal/allowlist";
-import { openContext, PROFILE_DIR } from "../lib/portal/session";
+import { openContext, looksLikeLoginUrl, PROFILE_DIR } from "../lib/portal/session";
 
+// A members-only page, so an expired session lands straight on the login form
+// (the homepage loads signed-out and gives no prompt to sign in).
 const url =
-  process.argv[2] || process.env.PORTAL_START_URL || "https://community.tagetik.com/";
+  process.argv[2] || process.env.PORTAL_START_URL || "https://community.tagetik.com/library";
 
 async function main() {
   // The same allowlist the agent uses — one copy, so the two can never drift.
@@ -40,11 +42,17 @@ async function main() {
       });
     });
 
-    const cookies = await context.cookies();
+    // Prove it rather than count cookies: an unrelated cookie made "1 cookie
+    // saved" look like success while the session was in fact signed out.
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+    const signedOut =
+      looksLikeLoginUrl(page.url()) ||
+      (await page.locator('input[type="password"]:visible').count()) > 0;
     console.log(
-      cookies.length > 0
-        ? `\n✅ Session saved to ${PROFILE_DIR}\n   Check it any time with:  npm run portal:check`
-        : "\n⚠️  No cookies were saved — that usually means the sign-in didn't complete.",
+      signedOut
+        ? "\n⚠️  Still on the login page — the sign-in didn't complete. Run this again."
+        : `\n✅ Signed in, and the session is saved to ${PROFILE_DIR}\n   Check it any time with:  npm run portal:check`,
     );
   } finally {
     await context.close();

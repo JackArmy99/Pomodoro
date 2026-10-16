@@ -142,6 +142,19 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
   try {
     const page = await reader.read(source.canonicalUrl);
 
+    // Signed out? Checked BEFORE the preview reports back. It used to run only
+    // on full runs, so a preview of an expired session came back "1 paragraph:
+    // Please wait" — the portal's redirect to its login page, presented as if it
+    // were the webinar.
+    if (page && (await browser.signedOut())) {
+      await finish(prisma, job.id, "needs_input", reader.log, {
+        code: "session_expired",
+        message:
+          "The portal sent us to its login page — your saved session has expired. Run: npm run portal:login",
+      });
+      return;
+    }
+
     if (dryRun) {
       const paragraphs = page ? splitParagraphs(page.text) : [];
       await finish(
@@ -177,14 +190,6 @@ export async function runPageJob(ctx: Ctx): Promise<void> {
       await finish(prisma, job.id, "needs_input", reader.log, {
         code: why?.outcome === "refused" ? "refused" : "fetch_failed",
         message: why?.note ?? "The page could not be read.",
-      });
-      return;
-    }
-
-    if (await browser.signedOut()) {
-      await finish(prisma, job.id, "needs_input", reader.log, {
-        code: "session_expired",
-        message: "The portal session has expired. Run: npm run portal:login",
       });
       return;
     }

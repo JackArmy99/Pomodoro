@@ -118,7 +118,11 @@ export async function closeRun(prisma: PrismaClient, jobId: string): Promise<voi
   const last = steps[steps.length - 1];
   if (!last || last.state !== "running") return;
 
-  const ended = ["succeeded", "published"].includes(job.state);
+  // A preview finishes as "needs your input" on purpose (it stored nothing and
+  // waits for you to decide), but it DID what it set out to do — showing it as
+  // ✗ "stopped here" made a successful preview look like a failure.
+  const ended =
+    ["succeeded", "published"].includes(job.state) || job.errorCode === "preview";
   last.state = ended ? "done" : "stopped";
   if (!ended) {
     last.note = job.errorMessage || job.errorCode || last.note;

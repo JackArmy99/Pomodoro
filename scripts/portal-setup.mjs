@@ -15,7 +15,7 @@
 // in the git-ignored storage/ directory records that this machine wants it, so
 // `npm run update` can put it back (npm install prunes anything unsaved).
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -93,7 +93,22 @@ async function main() {
 
   // 4. Remember, so an update can put it back.
   mkdirSync(dirname(MARKER), { recursive: true });
-  writeFileSync(MARKER, JSON.stringify({ installedAt: new Date().toISOString() }, null, 2));
+  // Record the exact version. The browser download is tied to it: when the
+  // updater restored "playwright" with no version it got a newer release that
+  // wanted a browser build nobody had downloaded, and every portal run failed
+  // with "Executable doesn't exist".
+  let version = null;
+  try {
+    version = JSON.parse(
+      readFileSync(join(root, "node_modules", "playwright", "package.json"), "utf8"),
+    ).version;
+  } catch {
+    // unknown version — the updater falls back to the latest
+  }
+  writeFileSync(
+    MARKER,
+    JSON.stringify({ installedAt: new Date().toISOString(), version }, null, 2),
+  );
 
   console.log("\nNext:  npm run portal:login   (you sign in; the session is reused)");
 }

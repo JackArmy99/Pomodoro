@@ -30,6 +30,13 @@ import {
 } from "@/lib/research/web";
 import { readFileSync } from "node:fs";
 
+// This gate must never spend money. Its checks assume there is no API key —
+// always true in a cloud container, but Jack's laptop has one in .env, and the
+// "re-analysis" check then made a real, paid model call. An EMPTY value (not a
+// deleted one) is deliberate: Prisma loads .env into process.env for any
+// variable not already set, which would quietly put the key back.
+process.env.ANTHROPIC_API_KEY = "";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = mkdtempSync(join(tmpdir(), "beacon-videotest-"));
 const dbPath = join(dir, "test.db");

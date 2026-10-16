@@ -23,6 +23,7 @@ import {
   mkdirSync,
   openSync,
   readdirSync,
+  readFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -152,10 +153,28 @@ function restorePlaywright() {
   if (!existsSync(marker)) return;
   if (existsSync(join(root, "node_modules", "playwright"))) return;
 
+  // The SAME version that was set up. The downloaded browser belongs to one
+  // Playwright release; restoring the latest instead installed a release that
+  // wanted a browser build nobody had downloaded, and every portal run then
+  // failed with "Executable doesn't exist".
+  let version = null;
+  try {
+    version = JSON.parse(readFileSync(marker, "utf8")).version || null;
+  } catch {
+    // an older marker without a version — fall through to the latest
+  }
+  const pkg = version && /^[\w.-]+$/.test(version) ? `playwright@${version}` : "playwright";
+
   step("Putting the portal browser back");
   try {
-    run("npm install --no-save playwright");
-    console.log("Restored Playwright (the Chromium download is kept separately).");
+    run(`npm install --no-save ${pkg}`);
+    console.log(`Restored ${pkg} (the Chromium download is kept separately).`);
+    if (!version) {
+      console.log(
+        "No version was recorded, so the latest was installed. If the portal then\n" +
+          "says the browser is missing, run:  npm run portal:setup",
+      );
+    }
   } catch {
     // Not fatal: everything except the portal still works, and portal:setup
     // says so clearly when it is next needed.

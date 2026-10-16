@@ -9,12 +9,17 @@ import {
 import { createReader, Blocked, CapReached } from "@/lib/portal/fetch";
 import { jobHandlerFor, retryKindFor } from "@/lib/knowledge/jobKinds";
 import { parseDetail, closeRun } from "@/lib/knowledge/runLog";
+import { looksLikeLoginUrl } from "@/lib/portal/loginPage";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+
+// Never spend money from a test gate, even on a machine whose .env holds a real
+// key. Empty rather than deleted: Prisma would reload a deleted one from .env.
+process.env.ANTHROPIC_API_KEY = "";
 
 let bad = 0;
 const check = (n: string, ok: boolean, d = "") => {
@@ -45,6 +50,15 @@ console.log("\nScript module boundaries");
     offenders.join(", "),
   );
 }
+
+// The real portal signals an expired session by redirecting to /auth/login.
+console.log("\nRecognising the login page");
+check("the Community login redirect is recognised",
+  looksLikeLoginUrl("https://community.tagetik.com/auth/login?came_from=https%3A%2F%2Fcommunity.tagetik.com%2Flibrary"));
+check("a plain /login page is recognised", looksLikeLoginUrl("https://portal.tagetik.com/login"));
+check("the Library is not a login page", !looksLikeLoginUrl("https://community.tagetik.com/library"));
+check("a webinar merely ABOUT logging in is not a login page",
+  !looksLikeLoginUrl("https://community.tagetik.com/library/wb-login-and-security-tips"));
 
 console.log("\nAllowlist");
 check("a tagetik page is allowed", checkUrl("https://www.tagetik.com/release-notes").ok);
@@ -210,14 +224,26 @@ async function pipelineGuards() {
   const dbPath = join(dir, "t.db");
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     cwd: root, stdio: "ignore", env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
+    shell: process.platform === "win32", // npx is npx.cmd on Windows
   });
   // lib/db is a singleton reading DATABASE_URL, so point the whole process at
   // the throwaway database before anything imports it.
   process.env.DATABASE_URL = `file:${dbPath}`;
+  // The same for the portal profile. This used to be the REAL
+  // storage/portal-profile — created if missing, and DELETED at the end. On
+  // Jack's laptop that is his saved sign-in. Must be set before anything
+  // imports lib/portal/session.ts, which fixes the location on import.
+  process.env.PORTAL_PROFILE_DIR = join(dir, "portal-profile");
 
   const { runPageJob } = await import("@/lib/knowledge/pagePipeline");
   const { setPortalEnabled } = await import("@/lib/portal/enabled");
   const { PROFILE_DIR } = await import("@/lib/portal/session");
+  if (!PROFILE_DIR.startsWith(dir)) {
+    throw new Error(
+      `Refusing to run: the portal profile resolved to ${PROFILE_DIR}, outside the ` +
+        "throwaway folder. Something imported lib/portal/session.ts too early.",
+    );
+  }
   const prisma = new PrismaClient({ datasources: { db: { url: `file:${dbPath}` } } });
 
   // A saved session has to look present for the gate under test to be the
@@ -226,6 +252,9 @@ async function pipelineGuards() {
 
   let text = "First paragraph.\n\nSecond paragraph.";
   let opened = 0;
+  // Flipped below to play an expired session: the real portal answers 200 and
+  // redirects to its login page, which the browser adapter reports here.
+  let sessionExpired = false;
   const fakeBrowser = async () => {
     opened++;
     return {
@@ -241,7 +270,7 @@ async function pipelineGuards() {
         },
         async wait() {},
       },
-      async signedOut() { return false; },
+      async signedOut() { return sessionExpired; },
       async close() {},
     };
   };
@@ -282,6 +311,33 @@ async function pipelineGuards() {
   check("a preview shows the extracted text",
     String(previewDetail.preview?.textSample ?? "").includes("First paragraph"));
   check("a preview counts the paragraphs", previewDetail.preview?.paragraphs === 2);
+  {
+    const steps = parseDetail(dry?.detail).steps ?? [];
+    const last = steps[steps.length - 1];
+    check("a preview that worked reads as done, not ✗ stopped",
+      last?.state === "done", `${last?.stage}: ${last?.state}`);
+  }
+
+  // 2b. An expired session. On the real portal this came back as a 200 page
+  //     reading "Please wait" — the redirect to the login form — and the preview
+  //     presented it as the webinar's content. It must say "signed out" instead.
+  sessionExpired = true;
+  const expired = await run("page_dry");
+  check("a preview of an expired session says so",
+    expired?.errorCode === "session_expired", String(expired?.errorCode));
+  check("it does not present the login page as content",
+    !parseDetail(expired?.detail).preview);
+  {
+    const steps = parseDetail(expired?.detail).steps ?? [];
+    const last = steps[steps.length - 1];
+    check("the timeline stops at the fetch, with the reason",
+      last?.state === "stopped" && /login/i.test(last?.note ?? ""), last?.note ?? "(none)");
+  }
+  const expiredFull = await run("page");
+  check("a full run of an expired session stores nothing",
+    expiredFull?.errorCode === "session_expired" &&
+      (await prisma.sourceVersion.count({ where: { sourceId: source.id } })) === 0);
+  sessionExpired = false;
   check("a preview is still logged for audit", (previewDetail.log ?? []).length > 0);
   // The reason previews exist: on a webinar page this is where the video is.
   check("a preview reports the embedded player",
@@ -427,6 +483,16 @@ async function pipelineGuards() {
     (await prisma.finding.count({ where: { knowledgeSourceId: empty.id } })) === 0);
 
   await prisma.$disconnect();
-  rmSync(dir, { recursive: true, force: true });
-  rmSync(PROFILE_DIR, { recursive: true, force: true });
+  // lib/db's shared client (used by the pipeline) holds the database file
+  // open too, and Windows refuses to delete an open file.
+  const { prisma: shared } = await import("@/lib/db");
+  await shared.$disconnect();
+  // Only ever the throwaway folder — the profile lives inside it now, so the
+  // real storage/portal-profile is never a candidate. Best effort: a leftover
+  // temp folder is untidy, not a failed test.
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    console.log(`  (couldn't remove the temp folder ${dir} — safe to delete by hand)`);
+  }
 }

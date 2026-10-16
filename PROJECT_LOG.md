@@ -2,6 +2,27 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-10-16 — First run on the laptop: four things only real Windows showed
+
+Jack asked to test the Tagetik video watcher; the session ran on his laptop.
+
+- **Live models verified:** doctor passed Sonnet 5 and Haiku 5.5 on every
+  request shape. Its web-search check was a false pass (errors inside a 200
+  reply) — fixed to count results.
+- **The webinar preview hit an expired portal session**, disguised as a 200
+  "Please wait" page that redirects to `/auth/login`. Previews never checked for
+  that, and `portal:check` tested the public homepage so it always passed. Both
+  now check the address, against a members-only page.
+- **The update's Playwright restore installed the wrong version** — fixed by
+  pinning it in the setup marker.
+- **The test gates were unsafe on a real machine:** one would have deleted
+  Jack's saved portal sign-in, one spent money because `.env` holds a key, and
+  two couldn't start on Windows at all. All fixed; every gate now passes on
+  Windows.
+
+Lesson: "passes in the cloud" never meant "safe on the laptop". The gates had
+only ever run where there was no key, no profile and no Windows.
+
 ## 2026-10 — Test mode on Haiku 5.5; doctor checks both models; a cloud key
 
 - **Why:** faster progress. The bottleneck was never credits, it was the test

@@ -97,6 +97,7 @@ async function main() {
   console.log("\nImport and revision, end to end");
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     cwd: root, stdio: "ignore", env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
+    shell: process.platform === "win32", // npx is npx.cmd on Windows
   });
   const prisma = new PrismaClient({ datasources: { db: { url: `file:${dbPath}` } } });
 
