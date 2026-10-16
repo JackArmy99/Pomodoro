@@ -23,6 +23,9 @@ export type JobDetail = {
   steps?: RunStep[];
   log?: unknown[];
   preview?: unknown;
+  // A Library check: the items it listed, and when.
+  items?: unknown[];
+  scannedAt?: string;
 };
 
 // Tolerant of every shape this column has ever held: the wrapper object, the

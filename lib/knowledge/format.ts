@@ -34,12 +34,16 @@ export const STAGE_LABELS: Record<string, string> = {
   compare: "Comparing with the last version",
   check: "Checking access",
   fetch: "Reading the page",
+  // Tagetik webinars (no captions)
+  media: "Finding and downloading the video",
+  transcribe: "Transcribing on this computer",
 };
 
 // What KIND of work a job is, in plain words. On screen this is the line that
 // would have caught a page being handed to the video pipeline at a glance.
 export const JOB_KIND_LABELS: Record<string, string> = {
   video: "Watching a video",
+  portal_video: "Watching a Tagetik webinar",
   analyse: "Re-reading a stored transcript",
   document: "Importing a document",
   page: "Checking a web page",
@@ -77,6 +81,16 @@ export function errorAdvice(
       return "Couldn't load this video. It may be private or deleted — or this machine couldn't reach YouTube (proxy, VPN or no connection). Open the link in your browser to check, then retry.";
     case "no_api_key":
       return "There's no ANTHROPIC_API_KEY set, so there was nothing to summarise with. The transcript is stored in full — add the key and summarise again.";
+    case "no_player":
+      return "That page has no video player. It may not be a webinar, or its video lives on another site Beacon isn't allowed to visit.";
+    case "no_media":
+      return "Found the video player but no video file in it. Tell Claude — the player may have changed.";
+    case "no_asr":
+      return "The speech-to-text add-on isn't installed on this computer. Run:  npm run portal:setup  — then press Try again.";
+    case "no_speech":
+      return "The video was downloaded but no speech was found in it.";
+    case "download_failed":
+      return message ?? "The video couldn't be downloaded. Try again; if it keeps failing, tell Claude.";
     case "no_summary":
       return "The model declined this item or returned nothing usable, so nothing was written to the inbox. The source is stored in full — try again. If it keeps happening on the same item, tell Claude.";
     case "refused":
@@ -134,6 +148,11 @@ export type SourceView = {
   contentsHeading: string;
   unitWord: string;
   showVideoLink: boolean;
+  // Open the source on its own site (a portal page or a portal webinar).
+  showPageLink: boolean;
+  // Can a timestamp jump to that second? YouTube takes `&t=`; the Tagetik
+  // player has no such address, so its timestamps are shown, not linked.
+  linkTimestamps: boolean;
   showSummary: boolean;
   showChanges: boolean;
 };
@@ -142,7 +161,9 @@ export function sourceView(kind: string): SourceView {
   // Every kind names itself. Nothing is defined as "not the other two", so a
   // kind added later shows the neutral page — a heading and its text — rather
   // than inheriting a YouTube link and a summary box it has no content for.
-  const isVideo = kind === "youtube";
+  const isYouTube = kind === "youtube";
+  const isPortalVideo = kind === "portal_video"; // a Tagetik webinar
+  const isVideo = isYouTube || isPortalVideo;
   const isDocument = kind === "document";
   const isPage = kind === "page";
 
@@ -152,8 +173,10 @@ export function sourceView(kind: string): SourceView {
     isPage,
     contentsHeading: isVideo ? "Transcript" : "Contents",
     unitWord: isVideo ? "segments" : "paragraphs",
-    // Only a video has somewhere to watch and a cited, timestamped summary.
-    showVideoLink: isVideo,
+    showVideoLink: isYouTube,
+    showPageLink: isPage || isPortalVideo,
+    linkTimestamps: isYouTube,
+    // Videos have a cited, timestamped summary.
     showSummary: isVideo,
     // Only things that have versions to compare show a change list.
     showChanges: isDocument || isPage,

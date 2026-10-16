@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { recordStep, noteStep } from "@/lib/knowledge/runLog";
-import { acquireCaptions, fetchMetadata } from "@/lib/research/video/youtube";
+import { recordStep, noteStep, mergeDetail } from "@/lib/knowledge/runLog";
+import { acquireCaptions, fetchMetadata, type Cue } from "@/lib/research/video/youtube";
+import { acquirePortalVideo } from "@/lib/research/video/portal";
 import { upsertSourceFinding } from "@/lib/knowledge/finding";
 import {
   summariseTranscript,
@@ -19,6 +20,10 @@ import {
 
 export const STAGES = [
   "metadata",
+  // Portal webinars only: no captions exist, so the video is fetched and
+  // transcribed on this machine. YouTube jobs skip straight to "captions".
+  "media",
+  "transcribe",
   "captions",
   "store",
   "summarise",
@@ -31,6 +36,9 @@ type Ctx = {
   prisma: PrismaClient;
   job: { id: string; sourceId: string; stage: string };
   workerId: string;
+  // Portal webinars only, injected by tests: a fake browser and transcriber.
+  openBrowser?: Parameters<typeof acquirePortalVideo>[1]["openBrowser"];
+  transcribe?: Parameters<typeof acquirePortalVideo>[1]["transcribe"];
 };
 
 class Cancelled extends Error {}
@@ -88,6 +96,47 @@ export async function runVideoJob(ctx: Ctx): Promise<void> {
     let versionId = source.currentVersionId;
 
     if (!done("store")) {
+    // Where the transcript comes from: YouTube captions, or — for a Tagetik
+    // Community webinar, which has none — the video itself, transcribed on
+    // this machine. Either way the result is the same timed cues, so storing,
+    // summarising, citing and the inbox are shared and unchanged.
+    let acquired: {
+      cues: Cue[];
+      language: string | null;
+      method: string;
+      limitations?: string;
+    };
+
+    if (source.kind === "portal_video") {
+      const r = await acquirePortalVideo(source.canonicalUrl, {
+        step: (stage, note) => setStage(prisma, job.id, stage, note),
+        note: (text) => noteStep(prisma, job.id, text),
+        openBrowser: ctx.openBrowser,
+        transcribe: ctx.transcribe,
+      });
+      // The audit trail: every address the run touched, kept on the job.
+      if (r.log.length) await mergeDetail(prisma, job.id, { log: r.log });
+      if (!r.ok) {
+        // Nothing to fix by trying again: the page has no video for us.
+        const dead = r.code === "no_player" || r.code === "no_media" || r.code === "refused";
+        await fail(prisma, job.id, dead ? "failed" : "needs_input", r.code, r.message);
+        return;
+      }
+      await prisma.knowledgeSource.update({
+        where: { id: source.id },
+        data: { title: r.title || source.title, channel: "CCH Tagetik Community" },
+      });
+      // Keep the in-memory copy in step: the inbox item is written from
+      // `source` later in this run, and it went out titled with the web
+      // address because this copy still held the placeholder.
+      if (r.title) source.title = r.title;
+      acquired = {
+        cues: r.cues,
+        language: r.language,
+        method: "asr_local",
+        limitations: r.note,
+      };
+    } else {
     // 1. Metadata — title/channel for the UI. Non-fatal if it fails, but we
     //    remember whether YouTube answered: that's how we avoid telling the user
     //    their video is "private" when the real problem is no connection.
@@ -134,11 +183,14 @@ export async function runVideoJob(ctx: Ctx): Promise<void> {
       await fail(prisma, job.id, needsUser ? "needs_input" : "failed", code, message);
       return;
     }
+    acquired = { cues: result.cues, language: result.language, method: "captions" };
+    } // ---- end YouTube captions ---------------------------------------------
 
+    const result = acquired;
     await assertNotCancelled(prisma, job.id);
 
     // 3. Store — every cue, with its timing. Deliberately no truncation.
-    await setStage(prisma, job.id, "store");
+    await setStage(prisma, job.id, "store", `${result.cues.length} lines`);
     const contentHash = createHash("sha256")
       .update(result.cues.map((c) => `${c.startMs}:${c.text}`).join("\n"))
       .digest("hex");
@@ -157,9 +209,10 @@ export async function runVideoJob(ctx: Ctx): Promise<void> {
         data: {
           sourceId: source.id,
           version: previous + 1,
-          transcriptMethod: "captions",
+          transcriptMethod: result.method,
           language: result.language,
           coverageStatus: "complete",
+          limitations: result.limitations ?? null,
           contentHash,
         },
       });

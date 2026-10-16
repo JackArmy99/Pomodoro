@@ -113,6 +113,47 @@ export async function assessPage(formData: FormData) {
   revalidatePath(`/knowledge/${sourceId}`);
 }
 
+// "Check for new webinars": one read of the Library, filtered to Webinars.
+// Lists items only — nothing is downloaded until one is ticked.
+export async function scanLibrary() {
+  const { enqueueLibraryScan } = await import("@/lib/knowledge/sources");
+  await enqueueLibraryScan();
+  revalidatePath("/knowledge");
+}
+
+// "Watch this": the same route as pasting the webinar's link.
+export async function watchLibraryItem(formData: FormData) {
+  const url = String(formData.get("url") ?? "");
+  const { enqueuePortalVideo } = await import("@/lib/knowledge/sources");
+  const result = url ? await enqueuePortalVideo(url) : null;
+  if (!result || !result.ok) {
+    redirect(`/knowledge?error=${encodeURIComponent(result && !result.ok ? result.error : "That isn't a Library webinar address.")}`);
+  }
+  revalidatePath("/knowledge");
+}
+
+// "Not interested": never offered again.
+export async function dismissLibraryItem(formData: FormData) {
+  const key = String(formData.get("key") ?? "");
+  if (!key) return;
+  const { prisma } = await import("@/lib/db");
+  const { DISMISSED_KEY } = await import("@/lib/portal/library");
+  const row = await prisma.setting.findUnique({ where: { key: DISMISSED_KEY } });
+  let keys: string[] = [];
+  try {
+    keys = JSON.parse(row?.value ?? "[]");
+  } catch {
+    keys = [];
+  }
+  if (!keys.includes(key)) keys.push(key);
+  await prisma.setting.upsert({
+    where: { key: DISMISSED_KEY },
+    create: { key: DISMISSED_KEY, value: JSON.stringify(keys) },
+    update: { value: JSON.stringify(keys) },
+  });
+  revalidatePath("/knowledge");
+}
+
 // The permission record. Ticking this is the confirmation that automated access
 // is allowed under the Wolters Kluwer agreement.
 export async function togglePortal(formData: FormData) {

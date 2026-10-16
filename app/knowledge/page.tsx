@@ -5,7 +5,13 @@ import {
   submitDocument,
   submitPage,
   togglePortal,
+  scanLibrary,
+  watchLibraryItem,
+  dismissLibraryItem,
 } from "@/app/actions/knowledge";
+import { parseDetail } from "@/lib/knowledge/runLog";
+import { DISMISSED_KEY, type LibraryItem } from "@/lib/portal/library";
+import { errorAdvice } from "@/lib/knowledge/format";
 import { portalEnabled } from "@/lib/portal/enabled";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
 import { JOB_STATE_LABELS, JOB_STATE_STYLES } from "@/lib/knowledge/format";
@@ -21,8 +27,11 @@ export default async function KnowledgePage({
 }: {
   searchParams: { error?: string };
 }) {
-  const [sources, workerAlive, portalOn] = await Promise.all([
+  const [sources, workerAlive, portalOn, library, dismissedRow] = await Promise.all([
     prisma.knowledgeSource.findMany({
+      // The Library listing is a source only so its checks have a history; it
+      // isn't knowledge, so it isn't listed with the videos and documents.
+      where: { kind: { not: "library" } },
       orderBy: { createdAt: "desc" },
       include: {
         jobs: { orderBy: { createdAt: "desc" }, take: 1 },
@@ -36,11 +45,39 @@ export default async function KnowledgePage({
     }),
     workerLooksAlive(),
     portalEnabled(),
+    prisma.knowledgeSource.findFirst({
+      where: { kind: "library" },
+      include: { jobs: { orderBy: { createdAt: "desc" }, take: 5 } },
+    }),
+    prisma.setting.findUnique({ where: { key: DISMISSED_KEY } }),
   ]);
 
-  const anyPending = sources.some((s) =>
-    ["queued", "running", "retry_wait"].includes(s.jobs[0]?.state ?? ""),
-  );
+  // ---- The webinar shortlist ------------------------------------------------
+  // The latest check's list, joined against what Beacon already holds and what
+  // Jack dismissed — worked out now, so it is never stale.
+  const lastScan = library?.jobs[0] ?? null;
+  const scanning = !!lastScan && ["queued", "running", "retry_wait"].includes(lastScan.state);
+  const lastGood = library?.jobs.find((j) => j.state === "succeeded") ?? null;
+  const items = (parseDetail(lastGood?.detail).items ?? []) as LibraryItem[];
+  let dismissed = new Set<string>();
+  try {
+    dismissed = new Set(JSON.parse(dismissedRow?.value ?? "[]"));
+  } catch {
+    dismissed = new Set();
+  }
+  const held = items.length
+    ? await prisma.knowledgeSource.findMany({
+        where: { provider: "tagetik", externalId: { in: items.map((i) => i.key) } },
+        include: { jobs: { orderBy: { createdAt: "desc" }, take: 1 } },
+      })
+    : [];
+  const heldByKey = new Map(held.map((h) => [h.externalId, h]));
+  const shown = items.filter((i) => !dismissed.has(i.key));
+  const hiddenCount = items.length - shown.length;
+
+  const anyPending =
+    scanning ||
+    sources.some((s) => ["queued", "running", "retry_wait"].includes(s.jobs[0]?.state ?? ""));
 
   return (
     <div className="space-y-6">
@@ -69,11 +106,112 @@ export default async function KnowledgePage({
         </div>
       )}
 
+      {/* Jack chooses what is watched: the Library's own Asset Type filter
+          (Webinars), then he ticks. Nothing is downloaded until he does. */}
+      <section className="card space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Tagetik webinars</h2>
+            <p className="text-xs text-slate-500">
+              Newest from the Library, filtered to Asset Type: Webinars. Nothing is
+              downloaded until you press <strong>Watch this</strong>. Each one takes
+              about half its length to transcribe on this laptop, plus ~10p for the
+              summary (under 1p in test mode).
+            </p>
+          </div>
+          {portalOn && (
+            <form action={scanLibrary}>
+              <SubmitButton className="whitespace-nowrap" pendingLabel="Queueing…">
+                {scanning ? "Checking…" : "Check for new webinars"}
+              </SubmitButton>
+            </form>
+          )}
+        </div>
+
+        {!portalOn && (
+          <p className="text-xs text-amber-800">Switch portal access on (below) to check the Library.</p>
+        )}
+        {lastScan && !scanning && lastScan.state !== "succeeded" && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+            The last check didn&apos;t finish:{" "}
+            {errorAdvice(lastScan.errorCode, lastScan.errorMessage, lastScan.kind)}
+          </p>
+        )}
+        {lastGood && (
+          <p className="text-xs text-slate-400">
+            Last checked {formatDate(lastGood.finishedAt ?? lastGood.createdAt)} ·{" "}
+            {items.length} listed
+            {hiddenCount > 0 ? ` · ${hiddenCount} you said no to are hidden` : ""}
+          </p>
+        )}
+
+        {shown.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {shown.map((item) => {
+              const have = heldByKey.get(item.key);
+              const state = have?.jobs[0]?.state ?? null;
+              const status = !have
+                ? "new"
+                : ["queued", "running", "retry_wait"].includes(state ?? "")
+                  ? "working"
+                  : state === "succeeded"
+                    ? "watched"
+                    : "attention";
+              return (
+                <li key={item.key} className="flex flex-wrap items-start gap-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-slate-400">{item.dateText}</p>
+                    <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                    {item.description && (
+                      <p className="line-clamp-2 text-xs text-slate-500">{item.description}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {status === "new" ? (
+                      <>
+                        <form action={watchLibraryItem}>
+                          <input type="hidden" name="url" value={item.url} />
+                          <SubmitButton pendingLabel="Queueing…">Watch this</SubmitButton>
+                        </form>
+                        <form action={dismissLibraryItem}>
+                          <input type="hidden" name="key" value={item.key} />
+                          <button type="submit" className="btn-ghost text-xs">
+                            Not interested
+                          </button>
+                        </form>
+                      </>
+                    ) : (
+                      <Link
+                        href={`/knowledge/${have!.id}`}
+                        className={`chip ${
+                          status === "watched"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : status === "working"
+                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              : "border-amber-200 bg-amber-50 text-amber-800"
+                        }`}
+                      >
+                        {status === "watched"
+                          ? "Watched ✓"
+                          : status === "working"
+                            ? "In progress…"
+                            : "Needs attention"}
+                      </Link>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
       <form action={submitVideo} className="card space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">Add a video</h2>
         <p className="text-xs text-slate-500">
-          Paste a YouTube link. Processing runs in the background and can take a
-          few minutes — you don&apos;t need to wait on this page.
+          Paste a YouTube link, or a Tagetik Community webinar page (one with a
+          Watch button). Processing runs in the background and can take a few
+          minutes — you don&apos;t need to wait on this page.
         </p>
         <div className="flex items-end gap-2">
           <input

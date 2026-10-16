@@ -29,6 +29,13 @@ import {
   SEARCH_TOOL_TYPES,
 } from "@/lib/research/web";
 import { readFileSync } from "node:fs";
+import { applyGlossary, chunksToCues } from "@/lib/research/video/asr";
+import {
+  pickPlayer,
+  pickMediaFile,
+  cleanTitle,
+  pageDescription,
+} from "@/lib/research/video/portal";
 
 // This gate must never spend money. Its checks assume there is no API key —
 // always true in a cloud container, but Jack's laptop has one in .env, and the
@@ -302,8 +309,65 @@ function modelGuards() {
   }
 }
 
+// Videos with no captions (Tagetik webinars) are transcribed on this machine.
+// These are the pure, free parts: cleaning Whisper's output and finding the
+// video on a real page layout (captured from the Community, 16 Oct 2026).
+function transcriptionGuards() {
+  console.log("\nWebinars without captions (local transcription)");
+
+  check("Whisper's 'CCH2GETIC' is corrected", applyGlossary("with CCH2GETIC today") === "with CCH Tagetik today");
+  check("'CCH Tegetic' is corrected", applyGlossary("with CCH Tegetic.") === "with CCH Tagetik.");
+  check("'Walter's Clure' is corrected", applyGlossary("at Walter's Clure.") === "at Wolters Kluwer.");
+  // Every variant below came out of the first real webinar.
+  for (const heard of ["CCH Digetic", "CCH Degetic", "CCH-Tageta", "CCH2GETIC", "CCH Tagetik"]) {
+    check(`'${heard}' becomes CCH Tagetik`, applyGlossary(`with ${heard}.`) === "with CCH Tagetik.",
+      applyGlossary(`with ${heard}.`));
+  }
+  check("'Antigetic' becomes 'and Tagetik'", applyGlossary("planning Antigetic") === "planning and Tagetik");
+  check("'cat fix' becomes CapEx", applyGlossary("workforce and cat fix planning") === "workforce and CapEx planning");
+  check("ordinary words are left alone", applyGlossary("the target was getting close") === "the target was getting close");
+
+  const cues = chunksToCues([
+    { timestamp: [0, 4.2], text: " Hello and welcome." },
+    { timestamp: [4.2, 9.8], text: " Today we look at workforce planning." },
+    { timestamp: [9.8, 12], text: " we look at workforce planning." }, // seam repeat
+    { timestamp: [12, null], text: "  " }, // empty — dropped
+    { timestamp: [12.5, null], text: " Thank you." }, // no end time
+  ]);
+  check("seam repeats and blanks are dropped", cues.length === 3, JSON.stringify(cues.map((c) => c.text)));
+  check("ordinals run 0..n after dropping", cues.map((c) => c.ordinal).join() === "0,1,2");
+  check("times are milliseconds", cues[1].startMs === 4200 && cues[1].endMs === 9800);
+  check("a missing end time gets a sensible one", cues[2].endMs > cues[2].startMs);
+
+  const pageEmbeds = [
+    "https://edit-video.tagetik.com/media/product-demo-transform-capex/embed_player",
+  ];
+  check("the player is found on a webinar page",
+    pickPlayer(pageEmbeds) === pageEmbeds[0]);
+  check("a page with no player finds none", pickPlayer(["https://www.youtube.com/embed/x"]) === null);
+  const playerEmbeds = [
+    "https://api.tagetik.com/video/media/x/_thumbnail--hd/ENG.jpg",
+    "https://api.tagetik.com/video/media/x/_video/demo%20%28720p%29.mp4?v=1",
+    "https://api.tagetik.com/video/media/x/_video/demo%20%281080p%29.mp4?v=1",
+  ];
+  check("the highest-resolution file is chosen", pickMediaFile(playerEmbeds)!.includes("1080p"));
+  check("a thumbnail is never mistaken for the video", pickMediaFile([playerEmbeds[0]]) === null);
+  check("the site's name is trimmed from the title",
+    cleanTitle("Webinar: Product demo - Transform CapEx | CCH Tagetik Community") ===
+      "Webinar: Product demo - Transform CapEx");
+  const pageText = [
+    "Home", "Library", "Webinar: Demo", "Library",
+    "Browse our resources to enhance your understanding of CCH Tagetik",
+    "Webinars | September 16, 2026", "Webinar: Demo",
+    "See how CCH Tagetik brings capital expenditure planning and workforce planning together.",
+  ].join("\n");
+  check("the description is the one under the heading, not the Library blurb",
+    pageDescription(pageText, "Webinar: Demo").startsWith("See how"));
+}
+
 async function main() {
   modelGuards();
+  transcriptionGuards();
   console.log("Building a throwaway database…");
   execFileSync("npx", ["prisma", "migrate", "deploy"], {
     cwd: root,

@@ -2,6 +2,23 @@
 
 Newest first. Each entry: what we decided and why. Read alongside `CLAUDE.md`.
 
+## 2026-10-16 — Webinars without captions: transcribed locally, chosen by Jack
+
+- Jack, rightly: caption-less video had been settled weeks ago (his hermes
+  example: download → audio → Whisper) and was only parked until media access
+  was known. With the MP4 found, it was built rather than re-asked.
+- **Local, not a cloud service:** Claude can't take audio; a third-party
+  speech-to-text service would send Wolters Kluwer content off the laptop.
+  ffmpeg + Whisper (transformers.js/ONNX) run on the laptop, free per video.
+  whisper-base was 4.6× real time but mangled product names; whisper-small is
+  ~2.2× (≈11 min for a 25-min webinar) and good enough, plus a glossary.
+- **Jack chooses what is watched:** the Library's own Asset Type filter
+  (`?asset_type=webinars`, found by trying the likely forms), then he ticks
+  items on a shortlist. Nothing downloads until he does. "How far back" is
+  still his to decide; the shortlist shows the newest page.
+- **Nothing is watched twice:** one identity per item (`libraryKey`), shared by
+  pasted links and the shortlist; dismissed items are remembered.
+
 ## 2026-10-16 — First run on the laptop: four things only real Windows showed
 
 Jack asked to test the Tagetik video watcher; the session ran on his laptop.

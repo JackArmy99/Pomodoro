@@ -151,30 +151,32 @@ async function postPull() {
 function restorePlaywright() {
   const marker = join(root, "storage", "portal-installed.json");
   if (!existsSync(marker)) return;
-  if (existsSync(join(root, "node_modules", "playwright"))) return;
 
-  // The SAME version that was set up. The downloaded browser belongs to one
-  // Playwright release; restoring the latest instead installed a release that
-  // wanted a browser build nobody had downloaded, and every portal run then
-  // failed with "Executable doesn't exist".
-  let version = null;
+  let saved = {};
   try {
-    version = JSON.parse(readFileSync(marker, "utf8")).version || null;
+    saved = JSON.parse(readFileSync(marker, "utf8"));
   } catch {
-    // an older marker without a version — fall through to the latest
+    // unreadable marker — restore Playwright at the latest version below
   }
-  const pkg = version && /^[\w.-]+$/.test(version) ? `playwright@${version}` : "playwright";
+  // Older markers only knew about Playwright.
+  const addons = saved.addons ?? { playwright: saved.version ?? null };
 
-  step("Putting the portal browser back");
+  // ALL add-ons in one command, at the SAME versions that were set up. One at
+  // a time, each install prunes the others (installing the speech-to-text
+  // pieces once removed Playwright), and the downloaded browser belongs to one
+  // Playwright release — the latest wanted a browser nobody had downloaded.
+  const missing = Object.keys(addons).filter(
+    (name) => !existsSync(join(root, "node_modules", ...name.split("/"))),
+  );
+  if (missing.length === 0) return;
+  const specs = Object.entries(addons).map(([name, v]) =>
+    v && /^[\w.-]+$/.test(v) ? `${name}@${v}` : name,
+  );
+
+  step("Putting the portal add-ons back");
   try {
-    run(`npm install --no-save ${pkg}`);
-    console.log(`Restored ${pkg} (the Chromium download is kept separately).`);
-    if (!version) {
-      console.log(
-        "No version was recorded, so the latest was installed. If the portal then\n" +
-          "says the browser is missing, run:  npm run portal:setup",
-      );
-    }
+    run(`npm install --no-save ${specs.join(" ")}`);
+    console.log(`Restored ${specs.join(", ")} (browser and Whisper downloads are kept separately).`);
   } catch {
     // Not fatal: everything except the portal still works, and portal:setup
     // says so clearly when it is next needed.

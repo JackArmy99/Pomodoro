@@ -18,14 +18,96 @@ export type EnqueueResult =
 // so a double-click can't cost money twice.
 export async function enqueueVideo(url: string): Promise<EnqueueResult> {
   const identity = canonicaliseYouTubeUrl(url);
-  if (!identity) {
-    return {
-      ok: false,
-      error:
-        "That doesn't look like a single public YouTube video. Paste a normal watch, youtu.be or Shorts link.",
-    };
+  if (identity) return enqueueIdentity(identity);
+
+  // Not YouTube — a Tagetik Community webinar? Same box, so Jack never has to
+  // know which route a video takes.
+  const webinar = await enqueuePortalVideo(url);
+  if (webinar) return webinar;
+
+  return {
+    ok: false,
+    error:
+      "That doesn't look like a video Beacon can watch. Paste a YouTube link, or a Tagetik Community library page that has a Watch button.",
+  };
+}
+
+// "Check for new webinars": queue one read of the Library, filtered to
+// Webinars. The listing is a source of its own (kind "library") so its checks
+// have a history like everything else; it is hidden from the Knowledge list.
+export async function enqueueLibraryScan(): Promise<EnqueueResult> {
+  const { WEBINARS_URL } = await import("@/lib/portal/library");
+  const externalId = "community.tagetik.com/library?asset_type=webinars";
+  const source =
+    (await prisma.knowledgeSource.findUnique({
+      where: { provider_externalId_ownerId: { provider: "portal", externalId, ownerId: "me" } },
+    })) ??
+    (await prisma.knowledgeSource.create({
+      data: {
+        provider: "portal",
+        kind: "library",
+        externalId,
+        canonicalUrl: WEBINARS_URL,
+        title: "Tagetik Library — Webinars",
+      },
+    }));
+
+  const active = await prisma.researchJob.findFirst({
+    where: { sourceId: source.id, state: { in: ["queued", "running", "retry_wait"] } },
+  });
+  if (!active) {
+    await prisma.researchJob.create({
+      data: { sourceId: source.id, kind: "library_scan", stage: "check" },
+    });
   }
-  return enqueueIdentity(identity);
+  return { ok: true, sourceId: source.id, created: !active };
+}
+
+// A Tagetik Community webinar: its library page, e.g.
+// https://community.tagetik.com/library/wb-product-demo-…
+// Returns null when the address isn't one, so the caller can say so.
+export async function enqueuePortalVideo(rawUrl: string): Promise<EnqueueResult | null> {
+  const { checkUrl } = await import("@/lib/portal/allowlist");
+  const { libraryKey } = await import("@/lib/portal/library");
+  const verdict = checkUrl(rawUrl.trim());
+  if (!verdict.ok) return null;
+  const u = verdict.url;
+  // An item's own page, not the listing. The key is shared with the Library
+  // shortlist, so an item is "already watched" however it arrived.
+  const externalId = libraryKey(u.toString());
+  if (!externalId) return null;
+
+  u.hash = "";
+  u.search = "";
+  const canonicalUrl = u.toString();
+
+  const existing = await prisma.knowledgeSource.findUnique({
+    where: {
+      provider_externalId_ownerId: { provider: "tagetik", externalId, ownerId: "me" },
+    },
+    include: { jobs: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
+  if (existing) {
+    const last = existing.jobs[0];
+    const active = last && ["queued", "running", "retry_wait"].includes(last.state);
+    if (!active && (!last || ["failed", "cancelled", "needs_input"].includes(last.state))) {
+      await prisma.researchJob.create({ data: { sourceId: existing.id, kind: "video" } });
+    }
+    return { ok: true, sourceId: existing.id, created: false };
+  }
+
+  const source = await prisma.knowledgeSource.create({
+    data: {
+      provider: "tagetik",
+      kind: "portal_video",
+      externalId,
+      canonicalUrl,
+      title: placeholderTitle(u),
+      channel: "CCH Tagetik Community",
+      jobs: { create: { kind: "video" } },
+    },
+  });
+  return { ok: true, sourceId: source.id, created: true };
 }
 
 async function enqueueIdentity(identity: VideoIdentity): Promise<EnqueueResult> {

@@ -15,6 +15,7 @@ import { runVideoJob } from "@/lib/research/video/pipeline";
 import { runDocumentJob } from "@/lib/knowledge/documentPipeline";
 import { runPageJob } from "@/lib/knowledge/pagePipeline";
 import { runPageAssessJob } from "@/lib/knowledge/assessPage";
+import { runLibraryScan } from "@/lib/knowledge/libraryScan";
 import { jobHandlerFor } from "@/lib/knowledge/jobKinds";
 import { closeRun, noteStep } from "@/lib/knowledge/runLog";
 
@@ -125,6 +126,8 @@ async function main() {
         await runPageJob({ prisma, job, workerId: WORKER_ID });
       } else if (routing.handler === "page_assess") {
         await runPageAssessJob({ prisma, job, workerId: WORKER_ID });
+      } else if (routing.handler === "library_scan") {
+        await runLibraryScan({ prisma, job, workerId: WORKER_ID });
       } else {
         await runVideoJob({ prisma, job, workerId: WORKER_ID });
       }

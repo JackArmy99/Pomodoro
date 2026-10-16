@@ -13,7 +13,7 @@
 //   2. otherwise the SOURCE's kind decides — a page is never handed to the
 //      video pipeline just because a default said so.
 
-export type Handler = "video" | "document" | "page" | "page_assess";
+export type Handler = "video" | "document" | "page" | "page_assess" | "library_scan";
 
 export type Routing = {
   handler: Handler;
@@ -29,10 +29,16 @@ const BY_JOB_KIND: Record<string, Handler> = {
   page: "page",
   page_dry: "page",
   page_assess: "page_assess",
+  library_scan: "library_scan",
 };
 
 const BY_SOURCE_KIND: Record<string, Handler> = {
+  // The Library listing: read for its list of items, never stored as text.
+  library: "library_scan",
   youtube: "video",
+  // A Tagetik webinar runs the same video pipeline; only its transcript comes
+  // from local speech-to-text instead of captions.
+  portal_video: "video",
   document: "document",
   page: "page",
 };
@@ -63,6 +69,8 @@ export function retryKindFor(sourceKind: string): string {
       return "document";
     case "page":
       return "page";
+    case "library":
+      return "library_scan";
     default:
       return "video";
   }

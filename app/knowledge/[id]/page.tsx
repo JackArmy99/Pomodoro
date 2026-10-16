@@ -202,14 +202,14 @@ export default async function KnowledgeSourcePage({
           >
             Watch on YouTube ↗
           </a>
-        ) : isPage ? (
+        ) : view.showPageLink ? (
           <a
             href={source.canonicalUrl}
             target="_blank"
             rel="noreferrer"
             className="text-xs font-medium text-indigo-600 hover:underline"
           >
-            Open the page ↗
+            {view.isVideo ? "Watch on the Tagetik Community ↗" : "Open the page ↗"}
           </a>
         ) : (
           <p className="text-xs text-slate-400">
@@ -477,7 +477,7 @@ export default async function KnowledgeSourcePage({
                     <Citations
                       ordinals={p.segmentOrdinals}
                       starts={segmentStarts}
-                      url={source.canonicalUrl}
+                      url={view.linkTimestamps ? source.canonicalUrl : null}
                     />
                   </div>
                 ))}
@@ -496,7 +496,7 @@ export default async function KnowledgeSourcePage({
                       <Citations
                         ordinals={st.segmentOrdinals}
                         starts={segmentStarts}
-                        url={source.canonicalUrl}
+                        url={view.linkTimestamps ? source.canonicalUrl : null}
                       />
                     </li>
                   ))}
@@ -551,6 +551,10 @@ export default async function KnowledgeSourcePage({
                   {!view.isVideo ? (
                     <span className="shrink-0 font-mono text-xs text-slate-400">
                       {s.page ? `p${s.page}` : "—"}
+                    </span>
+                  ) : !view.linkTimestamps ? (
+                    <span className="shrink-0 font-mono text-xs text-slate-500">
+                      {formatTimestamp(s.startMs)}
                     </span>
                   ) : (
                     <a
@@ -774,10 +778,23 @@ function Citations({
 }: {
   ordinals: number[];
   starts: Map<number, number>;
-  url: string;
+  // null when the player can't jump to a second (a Tagetik webinar): the
+  // timestamp is still shown, so the claim can be found in the transcript.
+  url: string | null;
 }) {
   const known = (ordinals ?? []).filter((o) => starts.has(o));
   if (known.length === 0) return null;
+  if (!url) {
+    return (
+      <span className="mt-1 flex flex-wrap gap-2">
+        {known.map((o) => (
+          <span key={o} className="font-mono text-xs text-slate-500">
+            {formatTimestamp(starts.get(o)!)}
+          </span>
+        ))}
+      </span>
+    );
+  }
   return (
     <span className="mt-1 flex flex-wrap gap-2">
       {known.map((o) => (

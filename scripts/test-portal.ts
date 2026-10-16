@@ -10,8 +10,9 @@ import { createReader, Blocked, CapReached } from "@/lib/portal/fetch";
 import { jobHandlerFor, retryKindFor } from "@/lib/knowledge/jobKinds";
 import { parseDetail, closeRun } from "@/lib/knowledge/runLog";
 import { looksLikeLoginUrl } from "@/lib/portal/loginPage";
+import { parseListing, libraryKey } from "@/lib/portal/library";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +60,40 @@ check("a plain /login page is recognised", looksLikeLoginUrl("https://portal.tag
 check("the Library is not a login page", !looksLikeLoginUrl("https://community.tagetik.com/library"));
 check("a webinar merely ABOUT logging in is not a login page",
   !looksLikeLoginUrl("https://community.tagetik.com/library/wb-login-and-security-tips"));
+
+// The Library list, as the real page lays it out (captured 16 Oct 2026).
+console.log("\nReading the Library list");
+{
+  const items = parseListing([
+    {
+      lines: ["video", "Watch", "Webinars | September 16, 2026",
+        "Webinar: Product demo - Transform CapEx and workforce planning with CCH Tagetik",
+        "See how CCH Tagetik brings capital expenditure planning and workforce planning together.",
+        "Read More"],
+      links: ["https://community.tagetik.com/library/wb-product-demo-transform-capex?x=1"],
+    },
+    {
+      lines: ["1.6 MB | pdf", "Download", "Installation and Upgrade Resources | October 15, 2026",
+        "Fix list - CCH Tagetik 5.3 SP37 (EN)", "Pdf file that describes the fixes.", "Read More"],
+      links: [
+        "https://community.tagetik.com/api/cms/library_installation_upgrade_resources/fix-list.pdf/@download",
+        "https://community.tagetik.com/library_installation_upgrade_resources/fix-list.pdf",
+      ],
+    },
+    { lines: ["Show favorite assets"], links: [] }, // page furniture — skipped
+  ]);
+  check("each real item is read", items.length === 2, String(items.length));
+  check("category and date come from the 'X | date' line",
+    items[0]?.category === "Webinars" && items[0]?.dateText === "September 16, 2026");
+  check("the title is the line after it", items[0]?.title.startsWith("Webinar: Product demo"));
+  check("the description stops at 'Read More'", items[0]?.description.endsWith("together."));
+  check("the item's own page is kept, not the @download file",
+    items[1]?.url === "https://community.tagetik.com/library_installation_upgrade_resources/fix-list.pdf");
+  check("the identity ignores ?query and is shared with pasted links",
+    items[0]?.key === libraryKey("https://community.tagetik.com/library/wb-product-demo-transform-capex"));
+  check("the Library listing itself is not an item", libraryKey("https://community.tagetik.com/library?asset_type=webinars") === null);
+  check("a non-Community address is never an item", libraryKey("https://www.youtube.com/library/x") === null);
+}
 
 console.log("\nAllowlist");
 check("a tagetik page is allowed", checkUrl("https://www.tagetik.com/release-notes").ok);
@@ -481,6 +516,171 @@ async function pipelineGuards() {
   check("an unstored page is not assessed", emptyAfter?.errorCode === "no_version");
   check("and no inbox item is invented",
     (await prisma.finding.count({ where: { knowledgeSourceId: empty.id } })) === 0);
+
+  // 8. A Tagetik webinar, end to end: page → player → MP4 → local
+  //    transcription → stored transcript. Fake browser, fake transcriber — no
+  //    network, no model download, no cost. Shapes copied from the real site.
+  console.log("\nA Tagetik webinar, end to end");
+  {
+    const { runVideoJob } = await import("@/lib/research/video/pipeline");
+    const { existsSync } = await import("node:fs");
+    const PAGE = "https://community.tagetik.com/library/wb-test-webinar";
+    const PLAYER = "https://edit-video.tagetik.com/media/test-webinar/embed_player";
+    let mp4 = "https://api.tagetik.com/video/media/test-webinar/_video/test%20%281080p%29.mp4?v=1";
+    let hasPlayer = true;
+    const visited: string[] = [];
+    let downloads = 0;
+    let downloadedTo = "";
+
+    const webinarBrowser = async () => {
+      let current = "";
+      return {
+        ctx: {
+          async goto(url: string) { current = url; visited.push(url); return { status: 200 }; },
+          async content() {
+            if (current.includes("embed_player")) {
+              return { title: "CCH Tagetik Video", text: "Play Video", links: [], embeds: [mp4] };
+            }
+            return {
+              title: "Webinar: Test demo | CCH Tagetik Community",
+              text: "Library\nWebinar: Test demo\nWebinars | September 16, 2026\nWebinar: Test demo\nSee how this test webinar explains planning in a unified platform.",
+              links: [],
+              embeds: hasPlayer ? [PLAYER] : [],
+            };
+          },
+          async wait() {},
+        },
+        async signedOut() { return false; },
+        async download(_url: string, dest: string) {
+          downloads++;
+          downloadedTo = dest;
+          writeFileSync(dest, "fake video");
+          return { ok: true, bytes: 61 * 1048576 };
+        },
+        async close() {},
+      };
+    };
+    const fakeTranscribe = async () => ({
+      cues: [
+        { ordinal: 0, startMs: 0, endMs: 4000, text: "Hello and welcome to the CCH Tagetik demo." },
+        { ordinal: 1, startMs: 4000, endMs: 9000, text: "Today we cover CapEx and workforce planning." },
+      ],
+      model: "onnx-community/whisper-small",
+      seconds: 1,
+      audioMinutes: 0.15,
+    });
+
+    const webinar = await prisma.knowledgeSource.create({
+      data: { provider: "tagetik", kind: "portal_video", externalId: "community.tagetik.com/library/wb-test-webinar",
+              canonicalUrl: PAGE, title: "placeholder" },
+    });
+    const runWebinar = async () => {
+      const job = await prisma.researchJob.create({ data: { sourceId: webinar.id, kind: "video" } });
+      await runVideoJob({
+        prisma: prisma as any,
+        job: { id: job.id, sourceId: webinar.id, stage: job.stage },
+        workerId: "t",
+        openBrowser: webinarBrowser as any,
+        transcribe: fakeTranscribe as any,
+      });
+      await closeRun(prisma as any, job.id);
+      return prisma.researchJob.findUnique({ where: { id: job.id } });
+    };
+
+    const w = await runWebinar();
+    const src = await prisma.knowledgeSource.findUnique({ where: { id: webinar.id } });
+    const ver = src?.currentVersionId
+      ? await prisma.sourceVersion.findUnique({ where: { id: src.currentVersionId } })
+      : null;
+    check("it reads the page, then the player — and nothing else",
+      visited.join(" → ") === `${PAGE} → ${PLAYER}`, visited.join(" → "));
+    check("the video is downloaded once", downloads === 1);
+    check("the download is deleted afterwards", downloadedTo !== "" && !existsSync(downloadedTo));
+    check("the transcript is stored, every line",
+      ver ? (await prisma.transcriptSegment.count({ where: { sourceVersionId: ver.id } })) === 2 : false);
+    check("it is labelled as a machine transcription", ver?.transcriptMethod === "asr_local");
+    check("its limits are recorded", /machine transcription/i.test(ver?.limitations ?? ""));
+    check("the real title replaces the placeholder", src?.title === "Webinar: Test demo", src?.title ?? "");
+    // No key in a test gate, so it stops at the summary — after the transcript
+    // is safely stored. Reaching here proves the whole acquisition half ran.
+    check("then it goes on to summarise", w?.errorCode === "no_api_key", String(w?.errorCode));
+    {
+      const d = parseDetail(w?.detail);
+      const stages = (d.steps ?? []).map((s) => s.stage).join(" → ");
+      check("the timeline shows each step", /media → transcribe → store → summarise/.test(stages), stages);
+      const logged = (d.log ?? []).map((e: any) => e.url);
+      check("every address is in the audit log", logged.length === 3 && logged.includes(mp4), String(logged.length));
+    }
+
+    // A video file on a site that isn't allowed is refused, never downloaded.
+    mp4 = "https://cdn.example-video.com/test.mp4";
+    downloads = 0;
+    const off = await runWebinar();
+    check("a video file off the allowed list is refused", off?.errorCode === "refused", String(off?.errorCode));
+    check("and nothing is downloaded", downloads === 0);
+
+    // A page without a player is a clear dead end, not a retry loop.
+    hasPlayer = false;
+    const none = await runWebinar();
+    check("a page with no player says so", none?.errorCode === "no_player" && none?.state === "failed");
+  }
+
+  // 9. "Check for new webinars": one filtered Library page, items listed, nothing
+  //    downloaded — and the same identity as a pasted webinar.
+  console.log("\nChecking the Library for webinars");
+  {
+    const { enqueueLibraryScan } = await import("@/lib/knowledge/sources");
+    const { runLibraryScan } = await import("@/lib/knowledge/libraryScan");
+    const { WEBINARS_URL } = await import("@/lib/portal/library");
+    const seenUrls: string[] = [];
+    let downloads = 0;
+    const libraryBrowser = async () => ({
+      ctx: {
+        async goto(url: string) { seenUrls.push(url); return { status: 200 }; },
+        async content() { return { title: "Library | CCH Tagetik Community", text: "238 results", links: [], embeds: [] }; },
+        async listing() {
+          return [
+            { lines: ["video", "Watch", "Webinars | September 16, 2026", "Webinar: Test demo", "About planning.", "Read More"],
+              links: ["https://community.tagetik.com/library/wb-test-webinar"] },
+            { lines: ["video", "Watch", "Webinars | September 2, 2026", "Webinar: Another", "About ESG.", "Read More"],
+              links: ["https://community.tagetik.com/library/wb-another"] },
+          ];
+        },
+        async wait() {},
+      },
+      async signedOut() { return false; },
+      async download() { downloads++; return { ok: true, bytes: 1 }; },
+      async close() {},
+    });
+
+    const queued = await enqueueLibraryScan();
+    const scanJob = await prisma.researchJob.findFirst({
+      where: { sourceId: queued.ok ? queued.sourceId : "", kind: "library_scan" },
+    });
+    await runLibraryScan({
+      prisma: prisma as any,
+      job: { id: scanJob!.id, sourceId: scanJob!.sourceId, stage: "check", kind: "library_scan" },
+      workerId: "t",
+      openBrowser: libraryBrowser as any,
+    });
+    const done = await prisma.researchJob.findUnique({ where: { id: scanJob!.id } });
+    const listed = (parseDetail(done?.detail).items ?? []) as any[];
+    check("the check succeeds and lists the webinars", done?.state === "succeeded" && listed.length === 2,
+      `${done?.state} ${listed.length}`);
+    check("it reads exactly ONE page — the Webinars filter", seenUrls.length === 1 && seenUrls[0] === WEBINARS_URL,
+      seenUrls.join(", "));
+    check("checking downloads nothing", downloads === 0);
+    // The webinar run above was for wb-test-webinar: the shortlist must see it
+    // as already held, by the SAME key.
+    const heldKeys = (await prisma.knowledgeSource.findMany({
+      where: { provider: "tagetik", externalId: { in: listed.map((i) => i.key) } },
+      select: { externalId: true },
+    })).map((s) => s.externalId);
+    check("an already-watched webinar is recognised on the list",
+      heldKeys.length === 1 && heldKeys[0] === "community.tagetik.com/library/wb-test-webinar", heldKeys.join());
+    check("the listing is hidden from the Knowledge list",
+      (await prisma.knowledgeSource.findFirst({ where: { kind: "library" } }))?.kind === "library");
+  }
 
   await prisma.$disconnect();
   // lib/db's shared client (used by the pipeline) holds the database file

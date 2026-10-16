@@ -27,6 +27,23 @@ const MARKER = join(root, "storage", "portal-installed.json");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 
+// Every optional add-on, installed in ONE command. npm treats any unsaved
+// package as clutter and prunes it on the next install — installing the
+// speech-to-text pieces on their own silently removed Playwright. Together,
+// always; and the updater restores them together too.
+//   playwright                — the browser that reads the portal
+//   ffmpeg-static             — pulls the audio out of a webinar video
+//   @huggingface/transformers — runs Whisper (speech-to-text) on this machine
+const ADDONS = ["playwright", "ffmpeg-static", "@huggingface/transformers"];
+
+function installedVersion(name) {
+  try {
+    return JSON.parse(readFileSync(join(root, "node_modules", name, "package.json"), "utf8")).version;
+  } catch {
+    return null;
+  }
+}
+
 function run(cmd, args) {
   console.log(`\n> ${cmd} ${args.join(" ")}`);
   const res = spawnSync(cmd, args, { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
@@ -43,11 +60,11 @@ function heldBackScripts() {
 }
 
 async function main() {
-  console.log("Setting up the portal browser (one-off, ~300MB).");
+  console.log("Setting up the portal browser and webinar transcription (one-off, ~400MB).");
 
-  // 1. The package. --no-save keeps it out of package.json on purpose.
-  if (!run(npm, ["install", "--no-save", "playwright"])) {
-    console.error("\n❌ Couldn't install the playwright package.");
+  // 1. The packages, together. --no-save keeps them out of package.json.
+  if (!run(npm, ["install", "--no-save", ...ADDONS])) {
+    console.error("\n❌ Couldn't install the add-ons.");
     heldBackScripts();
     process.exit(1);
   }
@@ -91,23 +108,36 @@ async function main() {
     await browser?.close().catch(() => {});
   }
 
-  // 4. Remember, so an update can put it back.
-  mkdirSync(dirname(MARKER), { recursive: true });
-  // Record the exact version. The browser download is tied to it: when the
-  // updater restored "playwright" with no version it got a newer release that
-  // wanted a browser build nobody had downloaded, and every portal run failed
-  // with "Executable doesn't exist".
-  let version = null;
+  // 3b. Prove the audio converter runs too — same rule as the browser.
   try {
-    version = JSON.parse(
-      readFileSync(join(root, "node_modules", "playwright", "package.json"), "utf8"),
-    ).version;
-  } catch {
-    // unknown version — the updater falls back to the latest
+    const mod = await import("ffmpeg-static");
+    const ffmpeg = mod.default ?? mod;
+    const res = spawnSync(ffmpeg, ["-version"], { encoding: "utf8" });
+    if (res.status !== 0) throw new Error(res.stderr || "ffmpeg did not run");
+    console.log(`✅ Audio converter works (${(res.stdout.split("\n")[0] || "ffmpeg").slice(0, 60)}).`);
+  } catch (err) {
+    console.error(`\n❌ The audio converter (ffmpeg) didn't run: ${String(err?.message ?? err).slice(0, 300)}`);
+    process.exit(1);
   }
+  console.log(
+    "   Speech-to-text: the Whisper model (~250MB) downloads the first time a\n" +
+      "   webinar is transcribed, into storage/whisper-models, and is kept.",
+  );
+
+  // 4. Remember, so an update can put them back — with EXACT versions. The
+  // browser download is tied to one Playwright release: restoring plain
+  // "playwright" got a newer release that wanted a browser build nobody had
+  // downloaded ("Executable doesn't exist").
+  mkdirSync(dirname(MARKER), { recursive: true });
+  const addons = Object.fromEntries(ADDONS.map((n) => [n, installedVersion(n)]));
   writeFileSync(
     MARKER,
-    JSON.stringify({ installedAt: new Date().toISOString(), version }, null, 2),
+    JSON.stringify(
+      // `version` kept for older updaters that only knew about Playwright.
+      { installedAt: new Date().toISOString(), version: addons.playwright, addons },
+      null,
+      2,
+    ),
   );
 
   console.log("\nNext:  npm run portal:login   (you sign in; the session is reused)");

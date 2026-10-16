@@ -54,6 +54,33 @@ no real client names/PII in the app.
   5.5 accepts `web_search_20260209`. Doctor itself costs ~10p, not ~2p. Still
   open: one test-mode Finder run, assessment and video summary on Haiku 5.5 vs
   Sonnet with real pence; whether Haiku 4.5 really failed on `effort` (optional).
+- **BUILT 16 Oct — Tagetik webinars are watched locally, and Jack chooses
+  which.** Paste a Community library link in "Add a video", or use the new
+  **Tagetik webinars** shortlist on `/knowledge` ("Check for new webinars" reads
+  ONE page: the Library's own filter `?asset_type=webinars`, newest first —
+  238 webinars on 16 Oct). Jack presses **Watch this** or **Not interested**;
+  nothing is downloaded until he does. Watching = page → player → MP4 →
+  ffmpeg audio → Whisper on the laptop → stored timed transcript → the normal
+  cited summary → inbox. Measured: 24.7-min webinar, whisper-small ≈ 2.2×
+  real time (~11 min), free; summary ~10p on Sonnet.
+  **Still open:** (1) the first real end-to-end run's summary quality — judge
+  it with Jack; (2) "how far back" is undecided — the shortlist shows the newest
+  15 (one page; the list loads more by infinite scroll, not yet followed);
+  (3) other asset types (How-to guides/manuals → document pipeline,
+  Newsletters, White papers, E-books → inbox) via the same filter idea;
+  (4) the permalink `/goto/<id>` form of an item isn't recognised as the same
+  item; (5) the web Finder doesn't yet skip content Beacon already holds;
+  (6) non-English webinars need `WHISPER_LANGUAGE` (defaults to English) —
+  and this matters now: of the first live shortlist (16 Oct, 15 items) about a
+  third are ITALIAN ("parliamo con IBSA", "IRRD - la nuova direttiva…").
+  Needs per-item language (the Library has a File Language filter/field) or
+  detection, before Jack ticks an Italian one.
+  **Proven live 16 Oct:** first webinar end to end in 14.2 min — 60.6 MB
+  download, 24.7 min of audio → 326 lines in 13 min (whisper-small), summary
+  25 cited points spanning 0:00–23:29 with the specifics kept (85/12/15%
+  stats, €1M CFO / €5M CEO approval thresholds, NPV/IRR/payback), 13 steps,
+  honest limits, relevance high → Budgeting & Planning. Cost $0.1065 (~8p).
+  The shortlist check works live and marks that webinar as watched.
 - **Webinar answer (16 Oct): no captions, but the easiest possible media.**
   The webinar page embeds `edit-video.tagetik.com/media/<slug>/embed_player`
   (→ `api.tagetik.com/video/media/<slug>/embed_player`), a video.js player
@@ -452,6 +479,29 @@ confident-but-wrong AI specifics reaching a client.
   "__name is not defined". `browser.ts` `sample()` failed like this on every
   preview, and a `.catch(() => null)` hid it — the structure panel never showed.
   See `SAMPLE_SCRIPT`.
+- **Optional add-ons are installed TOGETHER, always.** `playwright`,
+  `ffmpeg-static` and `@huggingface/transformers` stay out of package.json
+  (`--no-save`). npm prunes every unsaved package on the next install, so
+  installing two of them on their own silently removed the third (it happened:
+  the speech-to-text pieces removed Playwright). `portal-setup.mjs` installs all
+  three in one command and records each version under `addons` in
+  `storage/portal-installed.json`; `restorePlaywright()` in the updater puts
+  back all of them, pinned, in one command. Whisper's model downloads once into
+  `storage/whisper-models` (NOT node_modules, which installs wipe).
+- **Local transcription lives in `lib/research/video/asr.ts`;** the webinar
+  route in `portal.ts`. The video pipeline has two extra stages, `media` and
+  `transcribe`, between `metadata` and `captions`; YouTube skips them, a
+  `portal_video` source skips `captions`. Everything after `store` is shared.
+  Transcripts are labelled `transcriptMethod: "asr_local"`, their limits
+  recorded; a small glossary fixes Tagetik names Whisper mishears ("CCH2GETIC",
+  "Walter's Clure", "cat fix"); seam repeats from overlapping 30-s windows are
+  dropped. Timestamps are shown but not linked (the player has no `&t=`).
+- **One identity per Library item: `libraryKey()`** (host + path of the item's
+  own page). Used by `enqueuePortalVideo` and the shortlist, so an item is
+  "already watched" whether it was pasted or ticked. Dismissals are a Setting
+  (`library_dismissed`). The listing itself is a `kind: "library"` source,
+  hidden from the Knowledge list; its checks are `library_scan` jobs whose
+  `detail.items` hold what was listed.
 - **The Playwright version is pinned in the setup marker.** The browser
   download belongs to one Playwright release; restoring plain `playwright` after
   an update installed a newer release that wanted a browser nobody had

@@ -84,6 +84,16 @@ function sourceViewGuards() {
   check("a document offers nothing to watch", doc.showVideoLink === false);
   check("a document shows what changed", doc.showChanges === true);
 
+  // A Tagetik webinar is a video (transcript, summary) but not YouTube: its
+  // player can't jump to a second, and its link opens the Community page.
+  const webinar = sourceView("portal_video");
+  check("a webinar reads 'Transcript' and has a summary",
+    webinar.contentsHeading === "Transcript" && webinar.showSummary);
+  check("a webinar is not offered on YouTube", webinar.showVideoLink === false);
+  check("a webinar links to its Community page", webinar.showPageLink === true);
+  check("a webinar's timestamps are shown, not linked", webinar.linkTimestamps === false);
+  check("a YouTube video's timestamps ARE linked", sourceView("youtube").linkTimestamps === true);
+
   // A kind nobody has taught it about must not quietly inherit the video page.
   const unknown = sourceView("library");
   check("an unfamiliar kind is not treated as a video", unknown.isVideo === false);

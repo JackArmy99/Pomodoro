@@ -55,6 +55,21 @@ export const SAMPLE_SCRIPT = `(() => {
   };
 })()`;
 
+// The items on a Library listing page, raw: each item's text lines and links.
+// Written against the real markup (captured 16 Oct 2026): a
+// `div.infinite-scroll-component` holding one `div.container` per asset. A
+// string for the same reason as SAMPLE_SCRIPT. lib/portal/library.ts turns
+// this into titles, dates and links.
+export const LISTING_SCRIPT = `(() => {
+  var items = Array.from(document.querySelectorAll(".infinite-scroll-component > .container"));
+  return items.map(function (el) {
+    return {
+      lines: (el.innerText || "").split("\\n").map(function (l) { return l.trim(); }).filter(Boolean),
+      links: Array.from(el.querySelectorAll("a[href]")).map(function (a) { return a.href; })
+    };
+  });
+})()`;
+
 export type BrowserSession = {
   ctx: {
     goto(url: string): Promise<{ status: number | null }>;
@@ -66,7 +81,18 @@ export type BrowserSession = {
     }>;
     // Optional: only a listing page needs its structure sampled.
     sample?(): Promise<StructureSample>;
+    // Optional: the raw items of a Library listing page.
+    listing?(): Promise<{ lines: string[]; links: string[] }[]>;
   };
+  // Fetch one file with the signed-in session (webinar MP4s need it). The
+  // caller has already passed the URL through checkUrl(); this re-checks size
+  // with a HEAD request BEFORE downloading, so an oversized file is refused
+  // without spending the bandwidth.
+  download(
+    url: string,
+    dest: string,
+    maxBytes: number,
+  ): Promise<{ ok: true; bytes: number } | { ok: false; status: number | null; reason: string }>;
   signedOut(): Promise<boolean>;
   close(): Promise<void>;
 };
@@ -122,6 +148,9 @@ export async function openBrowser(): Promise<BrowserSession> {
         // never appeared on any preview. A string is sent to the page verbatim.
         return page.evaluate(SAMPLE_SCRIPT) as Promise<StructureSample>;
       },
+      async listing() {
+        return page.evaluate(LISTING_SCRIPT) as Promise<{ lines: string[]; links: string[] }[]>;
+      },
     },
     // Are we looking at the sign-in page instead of the content behind it?
     // An expired session on the Community site REDIRECTS to /auth/login, so
@@ -134,6 +163,30 @@ export async function openBrowser(): Promise<BrowserSession> {
       } catch {
         return false;
       }
+    },
+    async download(url, dest, maxBytes) {
+      const headers = { Referer: "https://community.tagetik.com/" };
+      const head = await context.request.head(url, { headers, timeout: 30_000 });
+      if (head.status() === 429 || head.status() === 403) {
+        return { ok: false, status: head.status(), reason: "the site pushed back" };
+      }
+      const size = Number(head.headers()["content-length"] ?? 0);
+      if (size > maxBytes) {
+        return {
+          ok: false,
+          status: head.status(),
+          reason: `${(size / 1048576).toFixed(0)} MB is over the ${(maxBytes / 1048576).toFixed(0)} MB limit`,
+        };
+      }
+      const res = await context.request.get(url, { headers, timeout: 600_000 });
+      if (!res.ok()) return { ok: false, status: res.status(), reason: `download failed (${res.status()})` };
+      const body = await res.body();
+      if (body.byteLength > maxBytes) {
+        return { ok: false, status: res.status(), reason: "the file was larger than its size said" };
+      }
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(dest, body);
+      return { ok: true, bytes: body.byteLength };
     },
     async close() {
       await context.close();
