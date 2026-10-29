@@ -19,20 +19,20 @@ datasource db {
 // hub hangs off clients. `name` holds the CODE NAME — no real names stored, so
 // it's safe to share screens and information.
 model Client {
-  id            String         @id @default(cuid())
-  name          String // code name, e.g. "Falcon"
-  type          String         @default("active") // "active" | "prospect"
-  color         String         @default("#6366f1")
-  hosting       String? // "SaaS Public" | "SaaS Private" | "On Premises"
+  id             String         @id @default(cuid())
+  name           String // code name, e.g. "Falcon"
+  type           String         @default("active") // "active" | "prospect"
+  color          String         @default("#6366f1")
+  hosting        String? // "SaaS Public" | "SaaS Private" | "On Premises"
   tagetikRelease String? // e.g. "2025"; null = not known yet
-  notes         String?
-  ownerId       String         @default("me") // becomes a real user id once teammates log in
-  createdAt     DateTime       @default(now())
-  briefs        BriefClient[]
-  opportunities Opportunity[]
-  tasks         Task[]
-  people        Person[]
-  modules       ClientModule[]
+  notes          String?
+  ownerId        String         @default("me") // becomes a real user id once teammates log in
+  createdAt      DateTime       @default(now())
+  briefs         BriefClient[]
+  opportunities  Opportunity[]
+  tasks          Task[]
+  people         Person[]
+  modules        ClientModule[]
 }
 
 // A Tagetik product/module in the catalogue (Consolidation, ETL, ESG, …).
@@ -43,6 +43,7 @@ model Module {
   clients     ClientModule[]
   briefs      BriefModule[]
   findings    FindingModule[]
+  kbTopics    KbTopic[]
 }
 
 // A research source a source/agent monitors (an RSS/blog feed or web topic).
@@ -300,6 +301,7 @@ model KnowledgeSource {
   currentVersionId String? // the published version shown in the UI
   docType          String? // manual | release_notes | official | webinar | promotional | news | community
   authority        Int? // 1 = manual … 5 = news/community; derived from docType (lib/knowledge/authority.ts)
+  moduleId         String? // the module a manual documents (its topic tree is built from it) — a plain id, no FK: a relation here would make SQLite rebuild the table
   createdAt        DateTime        @default(now())
   versions         SourceVersion[]
   jobs             ResearchJob[]
@@ -323,6 +325,7 @@ model SourceVersion {
   segments         TranscriptSegment[]
   chunks           KnowledgeChunk[]
   revisions        AnalysisRevision[]
+  sections         DocSection[]
 
   @@unique([sourceId, version])
 }
@@ -404,4 +407,69 @@ model ModelCall {
   costMicroUsd Int         @default(0)
   status       String      @default("ok")
   createdAt    DateTime    @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// The knowledge base (docs/knowledge-base-plan.md). Additive tables only.
+// ---------------------------------------------------------------------------
+
+// One entry of a manual edition's own table of contents, pinned to the
+// paragraphs it covers. Segments are never rebuilt: a section points at an
+// ordinal range. start..end covers the section INCLUDING its subsections.
+model DocSection {
+  id              String        @id @default(cuid())
+  sourceVersionId String
+  sourceVersion   SourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Cascade)
+  ordinal         Int // position in the outline, 0-based
+  path            String // "3.2.1" — position in the tree
+  title           String
+  level           Int // 1 = top level
+  page            Int?
+  startOrdinal    Int? // first paragraph (its heading, when found)
+  endOrdinal      Int? // last paragraph before the next section at the same or a higher level
+  method          String        @default("bookmarks") // bookmarks | headings
+  topicId         String?
+  topic           KbTopic?      @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceVersionId, ordinal])
+  @@index([topicId])
+}
+
+// Jack's module -> topic tree. The stable spine that survives manual editions:
+// sections of each edition map onto it.
+model KbTopic {
+  id          String       @id @default(cuid())
+  moduleId    String
+  module      Module       @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      KbTopic?     @relation("KbTopicTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    KbTopic[]    @relation("KbTopicTree")
+  title       String
+  order       Int          @default(0)
+  status      String       @default("draft") // draft | approved
+  createdFrom String? // the SourceVersion whose outline proposed it; null = added by Jack
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  sections    DocSection[]
+
+  @@index([moduleId, parentId])
+}
+
+// The audit log: what changed in the knowledge base, when, by whom, from what.
+// Append-only — written through lib/kb/events.ts, never updated or deleted.
+model KbEvent {
+  id              String   @id @default(cuid())
+  at              DateTime @default(now())
+  actor           String // "jack" | a job id
+  entityType      String // topic | section | statement | proposal
+  entityId        String
+  action          String // created | renamed | moved | merged | deleted | approved | …
+  beforeJson      String?
+  afterJson       String?
+  proposalId      String?
+  sourceVersionId String?
+  moduleId        String? // so a module's history is one query
+
+  @@index([moduleId, at])
+  @@index([entityType, entityId])
 }

@@ -61,7 +61,16 @@ no real client names/PII in the app.
   "a new edition of…" (manuals are renamed per release, so the file name
   can't link them); source pages and client pages edit them. **Waiting on
   Jack:** import the older then the current Consolidation PDF, and fill the
-  release for his 24 clients (0 known on 29 Oct). Then M1.
+  release for his 24 clients (0 known on 29 Oct).
+  **M1 code BUILT 29 Oct** (80 checks in `test:kb`): layout-aware PDF reading
+  (`lib/knowledge/pdfText.ts`), each edition's contents as `DocSection`s
+  (`lib/kb/sections.ts`), a proposed module → topic tree with editor and
+  history (`lib/kb/topics.ts`, `/knowledge/base`, `/knowledge/base/[moduleId]`),
+  append-only `KbEvent` (`lib/kb/events.ts`). Rehearsed on a real 649-page
+  Tagetik manual in a throwaway DB: 5.8 s, 8,464 paragraphs, 573 sections all
+  pinned to their exact heading, £0. **Waiting on Jack:** the old Consolidation
+  PDF → import, build the tree (chapters only, or two levels), spot-check 20
+  sections by page, approve. Then M2.
 
 - **Done 16 Oct, on Jack's laptop:** `npm run doctor` passes for Sonnet 5 AND
   Haiku 5.5 (call, effort, JSON schema, web search with real results). Haiku
@@ -547,6 +556,23 @@ confident-but-wrong AI specifics reaching a client.
   --from-schema-datasource prisma/schema.prisma --to-schema-datamodel
   prisma/schema.prisma --script` and name the folder with the current UTC
   time — the same name `--create-only` would give, so order stays monotonic.
+- **PDFs are read with PDF.js directly, not pdf-parse's text.** pdf-parse
+  gives each page as ONE block (no blank lines), so a page with four sections
+  was one "paragraph", and the running footer ("… August 2026 | © 2026 …")
+  sat in every page — a new edition's new date would have changed every page.
+  `pdfText.ts` rebuilds lines from positions, breaks paragraphs on type-size
+  change or a wide gap, and drops margin lines repeated on ≥3 pages (page
+  numbers and roman numerals ignored when comparing). pdf-parse stays as the
+  fallback. `pdfjs-dist` comes in as pdf-parse's own pinned dependency.
+- **Tagetik manuals have full bookmarks with pages** — the contents are exact
+  and free. Bookmarks and headings are matched with section numbers stripped
+  (`titleKey()`), since one may carry "2.1" and the other not.
+- **A relation column on an existing table makes SQLite rebuild it.** Adding
+  `KnowledgeSource.moduleId` as a Prisma relation generated a full
+  RedefineTables; it is a plain id instead. Read the diff SQL before writing a
+  migration.
+- Uploads go through server actions, limited in `next.config.mjs` (60 MB):
+  a full Tagetik manual is ~17 MB and the old 15 MB limit refused it.
 - Gates that import documents set `BEACON_DOCUMENTS_DIR` to their temp folder,
   so they never write into the real `storage/documents`.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.

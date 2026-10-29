@@ -10,6 +10,7 @@ import {
   setSourceClassification,
 } from "@/app/actions/knowledge";
 import { DOC_TYPES, RELEASE_SUGGESTIONS } from "@/lib/knowledge/authority";
+import { proposeTreeFromSource } from "@/app/actions/kb";
 import SubmitButton from "@/components/SubmitButton";
 import AutoRefresh from "@/components/AutoRefresh";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
@@ -32,8 +33,10 @@ export const dynamic = "force-dynamic";
 
 export default async function KnowledgeSourcePage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams: { error?: string };
 }) {
   const source = await prisma.knowledgeSource.findUnique({
     where: { id: params.id },
@@ -48,6 +51,21 @@ export default async function KnowledgeSourcePage({
         include: { _count: { select: { segments: true } } },
       })
     : null;
+
+  // The knowledge base: which module this covers, the edition's table of
+  // contents, and whether that module already has a topic tree.
+  const [modules, sections, moduleTopics] = await Promise.all([
+    prisma.module.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    version
+      ? prisma.docSection.findMany({
+          where: { sourceVersionId: version.id },
+          orderBy: { ordinal: "asc" },
+          select: { id: true, path: true, title: true, level: true, page: true, method: true, topic: { select: { title: true } } },
+        })
+      : Promise.resolve([]),
+    source.moduleId ? prisma.kbTopic.count({ where: { moduleId: source.moduleId } }) : Promise.resolve(0),
+  ]);
+  const moduleName = modules.find((m) => m.id === source.moduleId)?.name ?? null;
 
   // Show the opening of the transcript as proof the evidence is really stored.
   const segments = version
@@ -236,10 +254,33 @@ export default async function KnowledgeSourcePage({
               </datalist>
             </>
           )}
+          {isDocument && (
+            <>
+              <label htmlFor="moduleId">Module</label>
+              <select
+                id="moduleId"
+                name="moduleId"
+                defaultValue={source.moduleId ?? ""}
+                className="field w-44 py-1"
+              >
+                <option value="">—</option>
+                {modules.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           <SubmitButton className="btn-ghost py-1" pendingLabel="Saving…">
             Save
           </SubmitButton>
         </form>
+        {searchParams.error && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            {searchParams.error}
+          </p>
+        )}
         {view.showVideoLink ? (
           <a
             href={source.canonicalUrl}
@@ -377,6 +418,78 @@ export default async function KnowledgeSourcePage({
             In the inbox ({finding.status}) →
           </Link>
         </div>
+      )}
+
+      {/* The manual's own table of contents, pinned to its paragraphs. Free.
+          From here a manual proposes its module's topic tree. */}
+      {isDocument && version && (
+        <section className="card space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Table of contents</h2>
+              <p className="text-xs text-slate-500">
+                {sections.length
+                  ? `${sections.length} sections, read from the ${sections[0].method === "bookmarks" ? "PDF's bookmarks" : "numbered headings"} — each pinned to its page.`
+                  : "No table of contents was found in this file (no bookmarks or numbered headings)."}
+              </p>
+            </div>
+            {sections.length > 0 && source.docType === "manual" && source.moduleId && (
+              moduleTopics > 0 ? (
+                <Link
+                  href={`/knowledge/base/${source.moduleId}`}
+                  className="btn-ghost whitespace-nowrap py-1 text-xs"
+                >
+                  {moduleName} topic tree →
+                </Link>
+              ) : (
+                <form action={proposeTreeFromSource} className="flex items-center gap-2">
+                  <input type="hidden" name="sourceId" value={source.id} />
+                  {/* How deep the proposed tree goes; deeper sections are
+                      filed under their nearest topic, nothing is lost. */}
+                  <select name="maxDepth" defaultValue="1" className="field w-auto py-1 text-xs">
+                    <option value="1">
+                      Chapters only ({sections.filter((x) => x.level === 1).length} topics)
+                    </option>
+                    <option value="2">
+                      Two levels ({sections.filter((x) => x.level <= 2).length} topics)
+                    </option>
+                  </select>
+                  <SubmitButton className="btn whitespace-nowrap py-1 text-xs" pendingLabel="Building…">
+                    Build the {moduleName} topic tree from this
+                  </SubmitButton>
+                </form>
+              )
+            )}
+          </div>
+          {sections.length > 0 && (source.docType !== "manual" || !source.moduleId) && (
+            <p className="text-xs text-amber-700">
+              To build a topic tree from this, set “What is it?” to Manual and choose its module above.
+            </p>
+          )}
+          {sections.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-xs font-medium text-indigo-600">
+                Show all {sections.length} sections
+              </summary>
+              <ol className="mt-2 max-h-96 space-y-0.5 overflow-y-auto text-xs">
+                {sections.map((sec) => (
+                  <li
+                    key={sec.id}
+                    className="flex gap-2"
+                    style={{ paddingLeft: `${(sec.level - 1) * 1}rem` }}
+                  >
+                    <span className="w-12 shrink-0 text-slate-400">{sec.path}</span>
+                    <span className="text-slate-800">{sec.title}</span>
+                    <span className="ml-auto shrink-0 text-slate-400">
+                      {sec.page != null ? `p.${sec.page}` : ""}
+                      {sec.topic ? ` · ${sec.topic.title}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+        </section>
       )}
 
       {/* What changed — for documents this is computed locally, so it is free

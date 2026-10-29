@@ -72,6 +72,7 @@ export async function submitDocument(formData: FormData) {
     docType,
     release: String(formData.get("release") ?? ""),
     versionOf: String(formData.get("versionOf") ?? "") || null,
+    moduleId: String(formData.get("moduleId") ?? "") || null,
   });
   if (!result.ok) {
     redirect(`/knowledge?error=${encodeURIComponent(result.error)}`);
@@ -188,7 +189,12 @@ export async function setSourceClassification(formData: FormData) {
 
   await prisma.knowledgeSource.update({
     where: { id: sourceId },
-    data: classification(isDocType(docType) ? docType : null),
+    data: {
+      ...classification(isDocType(docType) ? docType : null),
+      ...(formData.has("moduleId")
+        ? { moduleId: String(formData.get("moduleId") ?? "") || null }
+        : {}),
+    },
   });
   if (source.currentVersionId && formData.has("release")) {
     await prisma.sourceVersion.update({

@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // Allow uploading research briefs (PDF/Word) up to ~15MB via server actions.
-    serverActions: { bodySizeLimit: "15mb" },
+    // Uploads (research briefs, manuals) go through server actions. A full
+    // Tagetik manual is ~17MB (649 pages), so 15MB refused real ones.
+    serverActions: { bodySizeLimit: "60mb" },
   },
 };
 

@@ -233,6 +233,8 @@ export async function enqueueDocument(
     // manuals are usually renamed per release, so the file name alone can't
     // say that "Consolidation_2026.pdf" is a version of "…_2025.pdf".
     versionOf?: string | null;
+    // The module a manual documents (its topic tree is built from it).
+    moduleId?: string | null;
   } = {},
 ): Promise<EnqueueResult> {
   const { mkdir, writeFile } = await import("node:fs/promises");
@@ -254,6 +256,7 @@ export async function enqueueDocument(
   }
   const release = normaliseRelease(opts.release);
   const cls = opts.docType ? classification(opts.docType) : null;
+  const moduleLink = opts.moduleId ? { moduleId: opts.moduleId } : {};
   const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   // Overridable only so the test gates never write into the real storage.
   const dir = process.env.BEACON_DOCUMENTS_DIR || join(root, "storage", "documents");
@@ -286,6 +289,7 @@ export async function enqueueDocument(
         canonicalUrl: `file:${path}`,
         title: fileName,
         ...(cls ?? classification(null)),
+        ...moduleLink,
       },
     }));
 
@@ -297,6 +301,7 @@ export async function enqueueDocument(
         // A renamed edition keeps the document's existing name.
         ...(opts.versionOf ? {} : { title: fileName }),
         ...(cls ?? {}),
+        ...moduleLink,
       },
     });
   }

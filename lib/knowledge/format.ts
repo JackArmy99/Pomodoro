@@ -32,6 +32,7 @@ export const STAGE_LABELS: Record<string, string> = {
   // document import
   read: "Reading the file",
   compare: "Comparing with the last version",
+  outline: "Reading the table of contents",
   check: "Checking access",
   fetch: "Reading the page",
   // Tagetik webinars (no captions)

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { OutlineEntry } from "@/lib/knowledge/pdfText";
 
 // ---------------------------------------------------------------------------
 // Turning a manual into the same shape as a transcript, so everything already
@@ -21,7 +22,14 @@ export type DocSegment = {
 };
 
 export type ExtractResult =
-  | { ok: true; pages: DocPage[]; pageCount: number; unit: "page" | "section" }
+  | {
+      ok: true;
+      pages: DocPage[];
+      pageCount: number;
+      unit: "page" | "section";
+      // A PDF's own bookmarks (its table of contents), when it has them.
+      outline?: OutlineEntry[];
+    }
   | { ok: false; code: string; message: string };
 
 // Word files and plain text have no pages, so they are blocked into sections of
@@ -65,6 +73,23 @@ export async function extractPages(
 
   try {
     if (lower.endsWith(".pdf")) {
+      // Layout-aware first: real paragraphs, no running headers, bookmarks.
+      // pdf-parse stays as the fallback for a PDF PDF.js chokes on.
+      try {
+        const { readPdf } = await import("@/lib/knowledge/pdfText");
+        const read = await readPdf(buffer);
+        if (read.pages.length > 0) {
+          return {
+            ok: true,
+            pages: read.pages,
+            pageCount: read.pageCount,
+            unit: "page",
+            outline: read.outline,
+          };
+        }
+      } catch {
+        /* fall through to pdf-parse */
+      }
       const mod: any = await import("pdf-parse");
       const PDFParse = mod.PDFParse ?? mod.default?.PDFParse;
       const parser = new PDFParse({ data: new Uint8Array(buffer) });

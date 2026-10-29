@@ -54,6 +54,7 @@ export default async function KnowledgePage({
     }),
     prisma.setting.findUnique({ where: { key: DISMISSED_KEY } }),
   ]);
+  const modules = await prisma.module.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
 
   // ---- The webinar shortlist ------------------------------------------------
   // The latest check's list, joined against what Beacon already holds and what
@@ -231,6 +232,19 @@ export default async function KnowledgePage({
         </div>
       </form>
 
+      <Link
+        href="/knowledge/base"
+        className="card flex items-center justify-between hover:border-indigo-300"
+      >
+        <span>
+          <span className="text-sm font-semibold text-slate-900">Knowledge base</span>
+          <span className="block text-xs text-slate-500">
+            Module → topic trees built from the manuals. Import a manual below, then build its tree.
+          </span>
+        </span>
+        <span className="text-sm text-indigo-600">Open →</span>
+      </Link>
+
       <form action={submitDocument} className="card space-y-2">
         <h2 className="text-sm font-semibold text-slate-900">Add a document</h2>
         <p className="text-xs text-slate-500">
@@ -278,6 +292,17 @@ export default async function KnowledgePage({
                 <option key={r} value={r} />
               ))}
             </datalist>
+          </label>
+          <label className="space-y-1 text-xs text-slate-500">
+            <span>Module it covers (for a manual)</span>
+            <select name="moduleId" className="field" defaultValue="">
+              <option value="">—</option>
+              {modules.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="space-y-1 text-xs text-slate-500">
             <span>A new edition of an existing document?</span>

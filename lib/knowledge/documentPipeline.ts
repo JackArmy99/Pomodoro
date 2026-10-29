@@ -8,11 +8,12 @@ import {
   type DocSegment,
 } from "@/lib/knowledge/documents";
 import { diffVersions, type DiffSegment } from "@/lib/knowledge/diff";
+import { buildSections } from "@/lib/kb/sections";
 
 // ---------------------------------------------------------------------------
 // Importing a document. Deliberately NO model call anywhere in here.
 //
-// Stages: read -> store -> compare -> published.
+// Stages: read -> store -> outline -> compare -> published.
 //
 // A 300-page manual costs nothing to bring in and keep, however long it is.
 // The model is only involved later, when a question is asked or when someone
@@ -20,7 +21,7 @@ import { diffVersions, type DiffSegment } from "@/lib/knowledge/diff";
 // affordable to re-check on every release.
 // ---------------------------------------------------------------------------
 
-export const DOC_STAGES = ["read", "store", "compare", "published"] as const;
+export const DOC_STAGES = ["read", "store", "outline", "compare", "published"] as const;
 export type DocStage = (typeof DOC_STAGES)[number];
 
 type Ctx = {
@@ -168,6 +169,23 @@ export async function runDocumentJob(ctx: Ctx): Promise<void> {
       language: null,
     },
   });
+
+  // 2b. The edition's own table of contents (PDF bookmarks, else numbered
+  //     headings), pinned to its paragraphs. Free; feeds the topic tree.
+  await setStage(prisma, job.id, "outline");
+  const sections = buildSections(extracted.outline, segments);
+  if (sections.length) {
+    await prisma.docSection.createMany({
+      data: sections.map((sec) => ({ ...sec, sourceVersionId: version.id })),
+    });
+  }
+  await noteStep(
+    prisma,
+    job.id,
+    sections.length
+      ? `${sections.length} sections from the ${sections[0].method === "bookmarks" ? "bookmarks" : "numbered headings"}`
+      : "no table of contents found",
+  );
 
   // 3. Compare with the previous version — locally, for free. Only the changed
   //    paragraphs would ever be sent to a model, and only on request.
