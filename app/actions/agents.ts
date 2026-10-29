@@ -82,6 +82,27 @@ export async function addAgentSource(formData: FormData) {
   revalidatePath(`/agents/${agentId}`);
 }
 
+// "Where to look", from one box: a feed address becomes an RSS source, any
+// other text a web topic. Saves asking Jack which kind it is.
+export async function addAgentWhere(formData: FormData) {
+  const agentId = String(formData.get("agentId") ?? "");
+  const text = String(formData.get("where") ?? "").trim();
+  if (!agentId || !text) return;
+  const isFeed = /^https?:\/\/\S+$/i.test(text) && /(rss|feed|atom|\.xml)/i.test(text);
+  if (isFeed) {
+    let name = text;
+    try {
+      name = new URL(text).hostname.replace(/^www\./, "");
+    } catch {
+      /* keep the text */
+    }
+    await prisma.source.create({ data: { agentId, type: "rss", name, url: text } });
+  } else {
+    await prisma.source.create({ data: { agentId, type: "web", name: text.slice(0, 80), query: text } });
+  }
+  revalidatePath(`/agents/${agentId}`);
+}
+
 export async function deleteAgentSource(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const agentId = String(formData.get("agentId") ?? "");
@@ -329,4 +350,5 @@ export async function setTestMode(formData: FormData) {
     update: { value: on ? "on" : "off" },
   });
   revalidatePath("/agents");
+  revalidatePath("/settings");
 }

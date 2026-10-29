@@ -12,6 +12,7 @@ export async function createCategory(formData: FormData) {
     .catch(() => {}); // ignore duplicates
 
   revalidatePath("/opportunities");
+  revalidatePath("/settings");
 }
 
 export async function deleteCategory(formData: FormData) {
@@ -21,4 +22,5 @@ export async function deleteCategory(formData: FormData) {
   await prisma.opportunityCategory.delete({ where: { id } });
 
   revalidatePath("/opportunities");
+  revalidatePath("/settings");
 }

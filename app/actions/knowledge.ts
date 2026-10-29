@@ -22,19 +22,19 @@ export async function submitVideo(formData: FormData) {
 
   const result = await enqueueVideo(url);
   if (!result.ok) {
-    redirect(`/knowledge?error=${encodeURIComponent(result.error)}`);
+    redirect(`/library?error=${encodeURIComponent(result.error)}`);
   }
 
-  revalidatePath("/knowledge");
-  redirect(`/knowledge/${result.sourceId}`);
+  revalidatePath("/library");
+  redirect(`/library/${result.sourceId}`);
 }
 
 export async function retrySource(formData: FormData) {
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) return;
   await requeueSource(sourceId);
-  revalidatePath(`/knowledge/${sourceId}`);
-  revalidatePath("/knowledge");
+  revalidatePath(`/library/${sourceId}`);
+  revalidatePath("/library");
 }
 
 export async function cancelSourceJob(formData: FormData) {
@@ -42,7 +42,7 @@ export async function cancelSourceJob(formData: FormData) {
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!jobId) return;
   await cancelJob(jobId);
-  revalidatePath(`/knowledge/${sourceId}`);
+  revalidatePath(`/library/${sourceId}`);
 }
 
 // Summarise (or re-summarise) a video whose transcript is already stored.
@@ -50,8 +50,8 @@ export async function summariseSource(formData: FormData) {
   const sourceId = String(formData.get("sourceId") ?? "");
   if (!sourceId) return;
   await enqueueAnalysis(sourceId);
-  revalidatePath(`/knowledge/${sourceId}`);
-  revalidatePath("/knowledge");
+  revalidatePath(`/library/${sourceId}`);
+  revalidatePath("/library");
 }
 
 // Upload a manual or other document. Import costs nothing — no model call is
@@ -59,12 +59,12 @@ export async function summariseSource(formData: FormData) {
 export async function submitDocument(formData: FormData) {
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    redirect(`/knowledge?error=${encodeURIComponent("Choose a file to upload.")}`);
+    redirect(`/library?error=${encodeURIComponent("Choose a file to upload.")}`);
   }
 
   const docType = String(formData.get("docType") ?? "");
   if (!isDocType(docType)) {
-    redirect(`/knowledge?error=${encodeURIComponent("Choose what kind of document this is.")}`);
+    redirect(`/library?error=${encodeURIComponent("Choose what kind of document this is.")}`);
   }
 
   const bytes = Buffer.from(await (file as File).arrayBuffer());
@@ -75,11 +75,11 @@ export async function submitDocument(formData: FormData) {
     moduleId: String(formData.get("moduleId") ?? "") || null,
   });
   if (!result.ok) {
-    redirect(`/knowledge?error=${encodeURIComponent(result.error)}`);
+    redirect(`/library?error=${encodeURIComponent(result.error)}`);
   }
 
-  revalidatePath("/knowledge");
-  redirect(`/knowledge/${result.sourceId}`);
+  revalidatePath("/library");
+  redirect(`/library/${result.sourceId}`);
 }
 
 // Watch a portal page. Dry run is the default: it proves access and shows what
@@ -91,10 +91,10 @@ export async function submitPage(formData: FormData) {
 
   const result = await enqueuePage(url, { dryRun });
   if (!result.ok) {
-    redirect(`/knowledge?error=${encodeURIComponent(result.error)}`);
+    redirect(`/library?error=${encodeURIComponent(result.error)}`);
   }
-  revalidatePath("/knowledge");
-  redirect(`/knowledge/${result.sourceId}`);
+  revalidatePath("/library");
+  redirect(`/library/${result.sourceId}`);
 }
 
 // Re-check a watched page. Unchanged pages cost nothing, so this is cheap to
@@ -107,9 +107,9 @@ export async function recheckPage(formData: FormData) {
   if (!source) return;
   const result = await enqueuePage(source.canonicalUrl, { dryRun: false });
   if (!result.ok) {
-    redirect(`/knowledge/${sourceId}?error=${encodeURIComponent(result.error)}`);
+    redirect(`/library/${sourceId}?error=${encodeURIComponent(result.error)}`);
   }
-  revalidatePath(`/knowledge/${sourceId}`);
+  revalidatePath(`/library/${sourceId}`);
 }
 
 // Assess a stored page and put it in the research inbox. One model call, a
@@ -120,9 +120,9 @@ export async function assessPage(formData: FormData) {
   if (!sourceId) return;
   const result = await enqueuePageAssessment(sourceId);
   if (!result.ok) {
-    redirect(`/knowledge/${sourceId}?error=${encodeURIComponent(result.error)}`);
+    redirect(`/library/${sourceId}?error=${encodeURIComponent(result.error)}`);
   }
-  revalidatePath(`/knowledge/${sourceId}`);
+  revalidatePath(`/library/${sourceId}`);
 }
 
 // "Check for new webinars": one read of the Library, filtered to Webinars.
@@ -130,7 +130,7 @@ export async function assessPage(formData: FormData) {
 export async function scanLibrary() {
   const { enqueueLibraryScan } = await import("@/lib/knowledge/sources");
   await enqueueLibraryScan();
-  revalidatePath("/knowledge");
+  revalidatePath("/library");
 }
 
 // "Watch this": the same route as pasting the webinar's link.
@@ -139,9 +139,9 @@ export async function watchLibraryItem(formData: FormData) {
   const { enqueuePortalVideo } = await import("@/lib/knowledge/sources");
   const result = url ? await enqueuePortalVideo(url) : null;
   if (!result || !result.ok) {
-    redirect(`/knowledge?error=${encodeURIComponent(result && !result.ok ? result.error : "That isn't a Library webinar address.")}`);
+    redirect(`/library?error=${encodeURIComponent(result && !result.ok ? result.error : "That isn't a Library webinar address.")}`);
   }
-  revalidatePath("/knowledge");
+  revalidatePath("/library");
 }
 
 // "Not interested": never offered again.
@@ -163,7 +163,7 @@ export async function dismissLibraryItem(formData: FormData) {
     create: { key: DISMISSED_KEY, value: JSON.stringify(keys) },
     update: { value: JSON.stringify(keys) },
   });
-  revalidatePath("/knowledge");
+  revalidatePath("/library");
 }
 
 // The permission record. Ticking this is the confirmation that automated access
@@ -172,7 +172,8 @@ export async function togglePortal(formData: FormData) {
   const on = String(formData.get("on") ?? "") === "true";
   const { setPortalEnabled } = await import("@/lib/portal/enabled");
   await setPortalEnabled(on);
-  revalidatePath("/knowledge");
+  revalidatePath("/library");
+  revalidatePath("/settings");
 }
 
 // What kind of source this is (which sets its authority) and which Tagetik
@@ -202,6 +203,6 @@ export async function setSourceClassification(formData: FormData) {
       data: { release: normaliseRelease(formData.get("release")) },
     });
   }
-  revalidatePath(`/knowledge/${sourceId}`);
-  revalidatePath("/knowledge");
+  revalidatePath(`/library/${sourceId}`);
+  revalidatePath("/library");
 }

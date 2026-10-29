@@ -8,6 +8,8 @@ import { runDocumentJob } from "@/lib/knowledge/documentPipeline";
 import { diffVersions, normalise } from "@/lib/knowledge/diff";
 import { splitParagraphs, toSegments, documentKey } from "@/lib/knowledge/documents";
 import { sourceView } from "@/lib/knowledge/format";
+import { existsSync, readFileSync } from "node:fs";
+import { MAIN_NAV, SETTINGS_NAV } from "@/lib/nav";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = mkdtempSync(join(tmpdir(), "beacon-doctest-"));
@@ -101,8 +103,37 @@ function sourceViewGuards() {
   check("an unfamiliar kind claims no summary", unknown.showSummary === false);
 }
 
+
+// The app's sections (docs/ui plan, 29 Oct): exactly these, in this order.
+// Old Knowledge links must keep working, and the screens taken off the menu
+// (Briefs, Opportunities, Modules) must still exist — their data is kept.
+async function navGuards() {
+  console.log("\nNavigation");
+  const labels = MAIN_NAV.map((n) => n.label).join(" · ");
+  check("the menu is Home · Agents · Inbox · Library · Clients", labels === "Home · Agents · Inbox · Library · Clients", labels);
+  check("Settings sits apart, at the bottom", SETTINGS_NAV.href === "/settings");
+  check("the Inbox shows a count", MAIN_NAV.find((n) => n.label === "Inbox")?.badge === "inbox");
+  const sidebar = readFileSync(join(root, "components", "Sidebar.tsx"), "utf8");
+  check("the sidebar keeps the client list (Jack's request)", sidebar.includes("ClientLinks"));
+
+  const config = (await import(join(root, "next.config.mjs").replace(/\\/g, "/").replace(/^([A-Za-z]):/, "file:///$1:"))).default;
+  const redirects: { source: string; destination: string }[] = await config.redirects();
+  const to = (src: string) => redirects.find((r) => r.source === src)?.destination;
+  check("/knowledge redirects to /library", to("/knowledge") === "/library");
+  check("a Knowledge item redirects to its Library page", to("/knowledge/:id") === "/library/:id");
+  check("the old topic pages redirect", to("/knowledge/base/:moduleId") === "/library/topics/:moduleId");
+  check("topic routes are matched before item routes",
+    redirects.findIndex((r) => r.source === "/knowledge/base/:moduleId") < redirects.findIndex((r) => r.source === "/knowledge/:id"));
+
+  for (const page of ["briefs", "opportunities", "modules", "library", "settings"]) {
+    check(`/${page} still has a page`, existsSync(join(root, "app", page, "page.tsx")));
+  }
+  check("no menu link points at the old /knowledge", !MAIN_NAV.some((n) => n.href.startsWith("/knowledge")));
+}
+
 async function main() {
   diffGuards();
+  await navGuards();
   sourceViewGuards();
   console.log("\nImport and revision, end to end");
   execFileSync("npx", ["prisma", "migrate", "deploy"], {

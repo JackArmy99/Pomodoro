@@ -38,6 +38,7 @@ export async function createModule(formData: FormData) {
     .catch(() => {}); // ignore duplicate names
 
   revalidatePath("/modules");
+  revalidatePath("/settings");
   const clientId = String(formData.get("clientId") ?? "");
   if (clientId) revalidatePath(`/clients/${clientId}`);
 }
@@ -50,6 +51,7 @@ export async function setModuleDescription(formData: FormData) {
   await prisma.module.update({ where: { id }, data: { description } });
   revalidatePath("/modules");
   revalidatePath(`/modules/${id}`);
+  revalidatePath("/settings");
 }
 
 // Edit the global product-context grounding injected into every research run.
@@ -61,6 +63,7 @@ export async function setProductContext(formData: FormData) {
     update: { value },
   });
   revalidatePath("/modules");
+  revalidatePath("/settings");
 }
 
 export async function setClientHosting(formData: FormData) {

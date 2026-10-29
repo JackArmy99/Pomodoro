@@ -183,3 +183,28 @@ export function sourceView(kind: string): SourceView {
     showChanges: isDocument || isPage,
   };
 }
+
+// The one status a Library row shows: Ready · Transcribing… · Needs you.
+// "Needs you" covers every way a run can stop short, because the action is
+// the same: open it.
+export function libraryStatus(
+  state: string | null | undefined,
+  kind: string,
+): { label: string; tone: "green" | "blue" | "amber" | "grey" } {
+  switch (state ?? "queued") {
+    case "succeeded":
+      return { label: "Ready", tone: "green" };
+    case "queued":
+      return { label: "Queued", tone: "grey" };
+    case "running":
+    case "retry_wait":
+      return {
+        label: kind === "portal_video" ? "Transcribing…" : kind === "document" ? "Importing…" : "Reading…",
+        tone: "blue",
+      };
+    case "cancelled":
+      return { label: "Cancelled", tone: "grey" };
+    default:
+      return { label: "Needs you", tone: "amber" };
+  }
+}

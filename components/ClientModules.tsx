@@ -1,95 +1,24 @@
-import {
-  createModule,
-  setClientHosting,
-  setClientModule,
-  setClientRelease,
-
-} from "@/app/actions/modules";
+import { setClientModule } from "@/app/actions/modules";
 import { createOpportunityQuick } from "@/app/actions/opportunities";
-import {
-  HOSTING_OPTIONS,
-  MODULE_STATUS_LABELS,
-  MODULE_STATUS_STYLES,
-} from "@/lib/format";
-import { RELEASE_SUGGESTIONS } from "@/lib/knowledge/authority";
+import { MODULE_STATUS_LABELS, MODULE_STATUS_STYLES } from "@/lib/format";
 
 type ModuleRow = { id: string; name: string };
 
+// Every module, with In use / Licensed / remove for this client. Licensed but
+// not in use offers "→ Opportunity" (an activation upsell).
 export default function ClientModules({
   clientId,
   clientName,
-  hosting,
-  tagetikRelease,
   modules,
   current, // moduleId -> status
 }: {
   clientId: string;
   clientName: string;
-  hosting: string | null;
-  tagetikRelease: string | null;
   modules: ModuleRow[];
   current: Record<string, string>;
 }) {
   return (
-    <section className="card space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-slate-900">
-          Modules &amp; licences
-        </h2>
-        {/* Hosting selector */}
-        <form action={setClientHosting} className="flex items-center gap-2">
-          <input type="hidden" name="clientId" value={clientId} />
-          <label className="text-xs text-slate-500" htmlFor="hosting">
-            Hosting
-          </label>
-          <select
-            id="hosting"
-            name="hosting"
-            defaultValue={hosting ?? ""}
-            className="field w-40 py-1"
-          >
-            <option value="">—</option>
-            {HOSTING_OPTIONS.map((h) => (
-              <option key={h} value={h}>
-                {h}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className="btn-ghost py-1">
-            Save
-          </button>
-        </form>
-        {/* Tagetik release — decides which manual changes affect this client */}
-        <form action={setClientRelease} className="flex items-center gap-2">
-          <input type="hidden" name="clientId" value={clientId} />
-          <label className="text-xs text-slate-500" htmlFor="tagetikRelease">
-            Tagetik release
-          </label>
-          <input
-            id="tagetikRelease"
-            name="tagetikRelease"
-            defaultValue={tagetikRelease ?? ""}
-            placeholder="unknown"
-            list="release-suggestions"
-            className="field w-32 py-1"
-          />
-          <datalist id="release-suggestions">
-            {RELEASE_SUGGESTIONS.map((r) => (
-              <option key={r} value={r} />
-            ))}
-          </datalist>
-          <button type="submit" className="btn-ghost py-1">
-            Save
-          </button>
-        </form>
-      </div>
-
-      <p className="text-xs text-slate-500">
-        <span className="font-medium text-emerald-700">In use</span> = actively
-        running · <span className="font-medium text-amber-700">Licensed</span> =
-        owned but not in use (an upsell opening).
-      </p>
-
+    <div>
       <ul className="divide-y divide-slate-100">
         {modules.map((m) => {
           const status = current[m.id]; // undefined | "in_use" | "licensed"
@@ -159,25 +88,7 @@ export default function ClientModules({
         })}
       </ul>
 
-      {/* Add a brand-new module to the catalogue */}
-      <form action={createModule} className="flex items-end gap-2 border-t border-slate-100 pt-3">
-        <input type="hidden" name="clientId" value={clientId} />
-        <div className="flex-1">
-          <label className="label" htmlFor="new-module">
-            Add a module to the catalogue
-          </label>
-          <input
-            id="new-module"
-            name="name"
-            placeholder="e.g. Disclosure Management"
-            className="field"
-          />
-        </div>
-        <button type="submit" className="btn-ghost">
-          Add module
-        </button>
-      </form>
-    </section>
+    </div>
   );
 }
 

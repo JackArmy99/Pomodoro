@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/kb";
 import SubmitButton from "@/components/SubmitButton";
 import { formatDate } from "@/lib/format";
+import { PageHeader, StatusChip, EmptyState } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -40,38 +41,32 @@ export default async function TopicTreePage({
 
   return (
     <div className="space-y-6">
-      <Link href="/knowledge/base" className="text-xs text-indigo-600 hover:underline">
-        ← Knowledge base
-      </Link>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-900">{mod.name} — topics</h1>
-          <p className="text-sm text-slate-500">
-            {total} topics
+      <PageHeader
+        back={{ href: "/library?tab=topics", label: "Library · Topics" }}
+        title={`${mod.name} topics`}
+        chips={
+          <>
+            <StatusChip>{total} topics</StatusChip>
             {manual && (
-              <>
-                {" "}from{" "}
-                <Link href={`/knowledge/${manual.id}`} className="text-indigo-600 hover:underline">
-                  {manual.title}
-                </Link>
-              </>
+              <Link href={`/library/${manual.id}`} className="text-xs text-indigo-600 hover:underline">
+                from {manual.title}
+              </Link>
             )}
-            . Rename by typing and pressing Enter. ↑↓ reorder, → nests under the
-            topic above, ← moves up a level. Merging keeps everything filed under
-            the topic. Up to {MAX_DEPTH} levels.
-          </p>
-        </div>
-        {drafts > 0 ? (
-          <form action={approveTreeAction}>
-            <input type="hidden" name="moduleId" value={mod.id} />
-            <SubmitButton className="btn whitespace-nowrap" pendingLabel="Approving…">
-              Approve the tree ({drafts} draft)
-            </SubmitButton>
-          </form>
-        ) : total > 0 ? (
-          <span className="chip border-emerald-200 bg-emerald-50 text-emerald-700">Approved</span>
-        ) : null}
-      </header>
+          </>
+        }
+        action={
+          drafts > 0 ? (
+            <form action={approveTreeAction}>
+              <input type="hidden" name="moduleId" value={mod.id} />
+              <SubmitButton className="btn whitespace-nowrap" pendingLabel="Approving…">
+                Approve all ({drafts} draft)
+              </SubmitButton>
+            </form>
+          ) : total > 0 ? (
+            <StatusChip tone="green">Approved</StatusChip>
+          ) : null
+        }
+      />
 
       {searchParams.error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -80,10 +75,15 @@ export default async function TopicTreePage({
       )}
 
       {total === 0 ? (
-        <p className="card text-sm text-slate-500">
-          No topics yet. Open the module&apos;s manual on the Knowledge page and
-          press “Build the topic tree from this”.
-        </p>
+        <EmptyState
+          action={
+            <Link href="/library?tab=manuals" className="btn-ghost">
+              Manuals
+            </Link>
+          }
+        >
+          No topics yet — build them from this module&apos;s manual.
+        </EmptyState>
       ) : (
         <section className="card divide-y divide-slate-100 p-0">
           {tree.map((n, i) => (

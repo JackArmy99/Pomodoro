@@ -23,10 +23,10 @@ import {
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
 function back(moduleId: string, r: Result, anchor?: string): never {
-  revalidatePath(`/knowledge/base/${moduleId}`);
-  revalidatePath("/knowledge/base");
+  revalidatePath(`/library/topics/${moduleId}`);
+  revalidatePath("/library/topics");
   const q = r.ok ? "" : `?error=${encodeURIComponent(r.error)}`;
-  redirect(`/knowledge/base/${moduleId}${q}${anchor ? `#${anchor}` : ""}`);
+  redirect(`/library/topics/${moduleId}${q}${anchor ? `#${anchor}` : ""}`);
 }
 
 // Build a module's first topic tree from a manual's table of contents.
@@ -35,7 +35,7 @@ function back(moduleId: string, r: Result, anchor?: string): never {
 export async function proposeTreeFromSource(formData: FormData) {
   const sourceId = str(formData, "sourceId");
   const source = await prisma.knowledgeSource.findUnique({ where: { id: sourceId } });
-  const fail = (msg: string) => redirect(`/knowledge/${sourceId}?error=${encodeURIComponent(msg)}`);
+  const fail = (msg: string) => redirect(`/library/${sourceId}?error=${encodeURIComponent(msg)}`);
   if (!source) return fail("Source not found.");
   if (!isManualTier(source.authority)) return fail("Only a manual can build the topic tree. Set “What is it?” to Manual first.");
   if (!source.moduleId) return fail("Choose which module this manual covers first.");

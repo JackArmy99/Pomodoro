@@ -71,10 +71,12 @@ no real client names/PII in the app.
   pinned to their exact heading, £0. **Waiting on Jack:** the old Consolidation
   PDF → import, build the tree (chapters only, or two levels), spot-check 20
   sections by page, approve. Then M2.
-- **UI streamlining plan (29 Oct): `docs/ui-streamline-plan.md`** — five
-  places (Today, Inbox, Library, Clients, Pipeline) + Setup, one Add box,
-  plain names, phases U1–U5. Awaiting Jack's go-ahead on the shape.
-
+- **UI rebuilt 29 Oct to Jack's spec — `docs/ui-tie-together.md`.** Home ·
+  Agents · Inbox · Library · Clients + Settings; client list kept in the
+  sidebar (Jack's request mid-build); Knowledge → Library (`/knowledge/*`
+  redirects); Briefs/Opportunities/Modules off the menu but working. Verified:
+  all 13 screens load, Settings switches toggle and restore, 14 nav checks in
+  `test:docs`. **Waiting on Jack:** judge each section from the screenshots.
 - **Done 16 Oct, on Jack's laptop:** `npm run doctor` passes for Sonnet 5 AND
   Haiku 5.5 (call, effort, JSON schema, web search with real results). Haiku
   5.5 accepts `web_search_20260209`. Doctor itself costs ~10p, not ~2p. Still
@@ -203,23 +205,31 @@ Destructive: `db:reseed` (confirm + auto-backup) and `db:reset` wipe all data.
 
 ## Screens (app/)
 
-- `/` Hub — personal tasks bucketed day/week/month + secondary opps/briefs.
-- `/agents`, `/agents/[id]` — research agent overview + briefing page. Seeded
-  with two beats: **Regulation & Standards** (domain-locked to IFRS/EFRAG/EIOPA/
-  OECD/EC/ESMA hosts, one pinned source per domain) and **Module Opportunities**
-  (broad, grounded by module descriptions).
-- `/research`, `/research/[id]` — inbox + finding detail (edit / dig deeper /
-  approve fan-out).
-- `/briefs`, `/briefs/[id]` — briefs + "who's affected".
-- `/opportunities` — pipeline + categories.
-- `/knowledge`, `/knowledge/[id]` — videos, documents AND watched pages. A video
-  shows its full timestamped transcript plus a cited summary (each point linking
-  to that second of the video). A document (PDF/Word) is stored paragraph by
-  paragraph with its page number, and a re-upload under the same file name
-  becomes a new version showing exactly what changed. A watched portal page
-  behaves like a document: Contents, versions and a change list — never a video
-  link or a summary box. All three link to their inbox item.
-- `/clients`, `/clients/[id]`, `/modules`, `/modules/[id]`.
+Sections in work order (`lib/nav.ts`, asserted in `npm run test:docs`):
+**Agents gather → Inbox you review → Library what we know → Clients who it
+affects.** Labels follow `docs/ui-tie-together.md` (Inbox item, Library,
+Checked, Approve, Run, Topic); code names stay (`Finding`, `/research`).
+
+- `/` Home — Waiting for you (counts that click through), one line per agent,
+  my tasks.
+- `/agents`, `/agents/[id]` — list with Run now; agent page has **Setup**
+  (Name, What to look for, Where to look; the rest under a closed Advanced)
+  and **Runs** tabs. Seeded beats: **Regulation & Standards** (domain-locked)
+  and **Module Opportunities**.
+- `/research`, `/research/[id]` — the Inbox: one row per item, inline Approve
+  (links affected clients as intel only) / Dismiss once the source is checked;
+  item page = summary → Mark source checked → Affects → Approve, Edit closed.
+- `/library` — tabs **Topics · Webinars & videos · Manuals · Pages**;
+  `/library/[id]` content first + side panel (Inbox item, Details, Filed under,
+  Affects, Versions, What it did); `/library/topics/[moduleId]` the topic tree.
+  A video shows its timestamped transcript and cited summary; a document its
+  contents, table of contents and changes; a watched page behaves like a
+  document — never a video link or a summary box.
+- `/clients`, `/clients/[id]` — modules, release, hosting, **Updates for this
+  client** (intel, opportunities, tasks from approved inbox items), people.
+- `/settings` — test mode, Community access + sign-in status, firm context,
+  modules + descriptions, opportunity categories.
+- Off the menu, still working: `/briefs`, `/opportunities`, `/modules`.
 
 ## Research engine (lib/research/)
 
@@ -578,6 +588,18 @@ confident-but-wrong AI specifics reaching a client.
   a full Tagetik manual is ~17 MB and the old 15 MB limit refused it.
 - Gates that import documents set `BEACON_DOCUMENTS_DIR` to their temp folder,
   so they never write into the real `storage/documents`.
+- **A plain `npm install` silently removes the portal add-ons** (Playwright,
+  ffmpeg-static, Whisper). Found missing on 29 Oct with no pull since 16 Oct.
+  Put them back with exactly the updater's command:
+  `npm install --no-save playwright@1.64.1 ffmpeg-static@5.3.0 "@huggingface/transformers@4.3.1"`
+  then `git checkout package-lock.json`. The ffmpeg binary, ONNX runtime and
+  browser download survived in place.
+- **A stale `next dev` makes every page 404 after a route move.** A server
+  started before `app/knowledge` became `app/library` kept port 3000, so the
+  new one came up on 3001. `npm run stop` before restarting after moving routes.
+- **Screens use `components/ui.tsx`** (PageHeader, Tabs, StatusChip,
+  EmptyState, SidePanel, PanelBox, Advanced, Section). No help paragraphs;
+  `SubmitButton`'s `className` REPLACES the default `btn`, so pass `btn …`.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next
