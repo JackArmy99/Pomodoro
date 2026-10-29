@@ -24,6 +24,7 @@ model Client {
   type          String         @default("active") // "active" | "prospect"
   color         String         @default("#6366f1")
   hosting       String? // "SaaS Public" | "SaaS Private" | "On Premises"
+  tagetikRelease String? // e.g. "2025"; null = not known yet
   notes         String?
   ownerId       String         @default("me") // becomes a real user id once teammates log in
   createdAt     DateTime       @default(now())
@@ -297,6 +298,8 @@ model KnowledgeSource {
   durationMs       Int?
   language         String?
   currentVersionId String? // the published version shown in the UI
+  docType          String? // manual | release_notes | official | webinar | promotional | news | community
+  authority        Int? // 1 = manual … 5 = news/community; derived from docType (lib/knowledge/authority.ts)
   createdAt        DateTime        @default(now())
   versions         SourceVersion[]
   jobs             ResearchJob[]
@@ -316,6 +319,7 @@ model SourceVersion {
   coverageStatus   String              @default("complete") // complete | partial | none
   limitations      String?
   contentHash      String?
+  release          String? // the Tagetik release this version documents, e.g. "2025"
   segments         TranscriptSegment[]
   chunks           KnowledgeChunk[]
   revisions        AnalysisRevision[]

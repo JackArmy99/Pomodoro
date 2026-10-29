@@ -7,7 +7,9 @@ import {
   summariseSource,
   recheckPage,
   assessPage,
+  setSourceClassification,
 } from "@/app/actions/knowledge";
+import { DOC_TYPES, RELEASE_SUGGESTIONS } from "@/lib/knowledge/authority";
 import SubmitButton from "@/components/SubmitButton";
 import AutoRefresh from "@/components/AutoRefresh";
 import { workerLooksAlive } from "@/lib/knowledge/sources";
@@ -193,6 +195,51 @@ export default async function KnowledgeSourcePage({
         {source.channel && (
           <p className="text-sm text-slate-500">{source.channel}</p>
         )}
+        {/* What kind of source this is decides how much it may say in the
+            knowledge base (only a Manual writes manual content). */}
+        <form
+          action={setSourceClassification}
+          className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500"
+        >
+          <input type="hidden" name="sourceId" value={source.id} />
+          <label htmlFor="docType">What is it?</label>
+          <select
+            id="docType"
+            name="docType"
+            defaultValue={source.docType ?? ""}
+            className="field w-56 py-1"
+          >
+            <option value="">Not classified</option>
+            {DOC_TYPES.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          {version && (
+            <>
+              <label htmlFor="release">
+                Release{isDocument ? ` (version ${version.version})` : ""}
+              </label>
+              <input
+                id="release"
+                name="release"
+                defaultValue={version.release ?? ""}
+                placeholder="unknown"
+                list="source-release-suggestions"
+                className="field w-32 py-1"
+              />
+              <datalist id="source-release-suggestions">
+                {RELEASE_SUGGESTIONS.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
+            </>
+          )}
+          <SubmitButton className="btn-ghost py-1" pendingLabel="Saving…">
+            Save
+          </SubmitButton>
+        </form>
         {view.showVideoLink ? (
           <a
             href={source.canonicalUrl}

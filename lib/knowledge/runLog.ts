@@ -26,6 +26,9 @@ export type JobDetail = {
   // A Library check: the items it listed, and when.
   items?: unknown[];
   scannedAt?: string;
+  // A document import: the release Jack said this version documents. Held
+  // here because the version itself is only created later, by the worker.
+  release?: string | null;
 };
 
 // Tolerant of every shape this column has ever held: the wrapper object, the

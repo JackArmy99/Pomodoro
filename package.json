@@ -28,6 +28,7 @@
     "test:video": "tsx scripts/test-video.ts",
     "test:docs": "tsx scripts/test-docs.ts",
     "test:portal": "tsx scripts/test-portal.ts",
+    "test:kb": "tsx scripts/test-kb.ts",
     "portal:setup": "node scripts/portal-setup.mjs",
     "portal:login": "tsx scripts/portal-login.ts",
     "portal:check": "tsx scripts/portal-check.ts",

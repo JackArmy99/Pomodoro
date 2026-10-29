@@ -111,6 +111,7 @@ export default async function ClientDetailPage({
         clientId={client.id}
         clientName={client.name}
         hosting={client.hosting}
+        tagetikRelease={client.tagetikRelease}
         modules={allModules}
         current={currentModules}
       />

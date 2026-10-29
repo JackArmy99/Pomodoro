@@ -19,6 +19,7 @@ import { formatTimestamp } from "@/lib/research/video/youtube";
 import SubmitButton from "@/components/SubmitButton";
 import AutoRefresh from "@/components/AutoRefresh";
 import { formatDate } from "@/lib/format";
+import { DOC_TYPES, RELEASE_SUGGESTIONS, docTypeLabel } from "@/lib/knowledge/authority";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,9 @@ export default async function KnowledgePage({
       include: {
         jobs: { orderBy: { createdAt: "desc" }, take: 1 },
         versions: {
+          orderBy: { version: "asc" },
           select: {
+            release: true,
             _count: { select: { segments: true } },
             revisions: { where: { status: "published" }, select: { id: true }, take: 1 },
           },
@@ -74,6 +77,8 @@ export default async function KnowledgePage({
   const heldByKey = new Map(held.map((h) => [h.externalId, h]));
   const shown = items.filter((i) => !dismissed.has(i.key));
   const hiddenCount = items.length - shown.length;
+
+  const documents = sources.filter((x) => x.kind === "document");
 
   const anyPending =
     scanning ||
@@ -234,14 +239,63 @@ export default async function KnowledgePage({
           ask what changed. Upload a newer version with the same file name and
           Beacon will show you exactly what changed.
         </p>
-        <div className="flex items-end gap-2">
-          <input
-            name="file"
-            type="file"
-            accept=".pdf,.docx,.txt,.md"
-            className="field"
-            required
-          />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="space-y-1 text-xs text-slate-500">
+            <span>File</span>
+            <input
+              name="file"
+              type="file"
+              accept=".pdf,.docx,.txt,.md"
+              className="field"
+              required
+            />
+          </label>
+          <label className="space-y-1 text-xs text-slate-500">
+            <span>What is it?</span>
+            {/* Sets how much it may say in the knowledge base: only a Manual
+                can write manual content; everything else only adds to it. */}
+            <select name="docType" className="field" required defaultValue="">
+              <option value="" disabled>
+                Choose…
+              </option>
+              {DOC_TYPES.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-xs text-slate-500">
+            <span>Tagetik release it covers (if known)</span>
+            <input
+              name="release"
+              placeholder="e.g. 2025"
+              list="doc-release-suggestions"
+              className="field"
+            />
+            <datalist id="doc-release-suggestions">
+              {RELEASE_SUGGESTIONS.map((r) => (
+                <option key={r} value={r} />
+              ))}
+            </datalist>
+          </label>
+          <label className="space-y-1 text-xs text-slate-500">
+            <span>A new edition of an existing document?</span>
+            <select name="versionOf" className="field" defaultValue="">
+              <option value="">No — a new document</option>
+              {documents.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="text-xs text-slate-500">
+          Two editions of one manual: import the <strong>older</strong> one first,
+          then the newer one as &ldquo;a new edition&rdquo; of it.
+        </p>
+        <div className="flex justify-end">
           <SubmitButton className="whitespace-nowrap" pendingLabel="Uploading…">
             Import
           </SubmitButton>
@@ -328,6 +382,22 @@ export default async function KnowledgePage({
                     {segments > 0 && (
                       <span className="text-xs text-slate-400">
                         {segments} transcript segments
+                      </span>
+                    )}
+                    <span
+                      className={`chip ${
+                        s.docType
+                          ? "border-slate-200 bg-slate-50 text-slate-600"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {docTypeLabel(s.docType)}
+                    </span>
+                    {s.kind === "document" && s.versions.length > 0 && (
+                      <span className="text-xs text-slate-400">
+                        {s.versions.length === 1 ? "1 edition" : `${s.versions.length} editions`}
+                        {" · release "}
+                        {s.versions.map((v) => v.release ?? "?").join(" → ")}
                       </span>
                     )}
                     {segments > 0 && !summarised && (

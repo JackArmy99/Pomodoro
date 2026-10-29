@@ -2,6 +2,8 @@ import {
   createModule,
   setClientHosting,
   setClientModule,
+  setClientRelease,
+
 } from "@/app/actions/modules";
 import { createOpportunityQuick } from "@/app/actions/opportunities";
 import {
@@ -9,6 +11,7 @@ import {
   MODULE_STATUS_LABELS,
   MODULE_STATUS_STYLES,
 } from "@/lib/format";
+import { RELEASE_SUGGESTIONS } from "@/lib/knowledge/authority";
 
 type ModuleRow = { id: string; name: string };
 
@@ -16,12 +19,14 @@ export default function ClientModules({
   clientId,
   clientName,
   hosting,
+  tagetikRelease,
   modules,
   current, // moduleId -> status
 }: {
   clientId: string;
   clientName: string;
   hosting: string | null;
+  tagetikRelease: string | null;
   modules: ModuleRow[];
   current: Record<string, string>;
 }) {
@@ -50,6 +55,29 @@ export default function ClientModules({
               </option>
             ))}
           </select>
+          <button type="submit" className="btn-ghost py-1">
+            Save
+          </button>
+        </form>
+        {/* Tagetik release — decides which manual changes affect this client */}
+        <form action={setClientRelease} className="flex items-center gap-2">
+          <input type="hidden" name="clientId" value={clientId} />
+          <label className="text-xs text-slate-500" htmlFor="tagetikRelease">
+            Tagetik release
+          </label>
+          <input
+            id="tagetikRelease"
+            name="tagetikRelease"
+            defaultValue={tagetikRelease ?? ""}
+            placeholder="unknown"
+            list="release-suggestions"
+            className="field w-32 py-1"
+          />
+          <datalist id="release-suggestions">
+            {RELEASE_SUGGESTIONS.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
           <button type="submit" className="btn-ghost py-1">
             Save
           </button>

@@ -55,6 +55,13 @@ no real client names/PII in the app.
   proposal Jack approves; an append-only audit log; clients linked by module +
   Tagetik release. Pilot: Consolidation, two PDF versions. Build one milestone
   at a time (M0 → M6) and stop after each for Jack to check.
+  **M0 code BUILT 29 Oct** (gates green, incl. new `npm run test:kb`):
+  `KnowledgeSource.docType/authority`, `SourceVersion.release`,
+  `Client.tagetikRelease`; import form asks "What is it?", the release, and
+  "a new edition of…" (manuals are renamed per release, so the file name
+  can't link them); source pages and client pages edit them. **Waiting on
+  Jack:** import the older then the current Consolidation PDF, and fill the
+  release for his 24 clients (0 known on 29 Oct). Then M1.
 
 - **Done 16 Oct, on Jack's laptop:** `npm run doctor` passes for Sonnet 5 AND
   Haiku 5.5 (call, effort, JSON schema, web search with real results). Haiku
@@ -531,6 +538,17 @@ confident-but-wrong AI specifics reaching a client.
 - **Playwright is an OPTIONAL dependency** (~300MB), declared in
   `types/playwright.d.ts` and loaded dynamically, so nobody who never touches
   the portal pays for it. `npm run portal:setup` installs it.
+- **Source authority is derived, never typed.** `lib/knowledge/authority.ts`
+  maps `docType` → tier (manual 1 … news/community 5); `classification()` is
+  the only way either is written. No docType = tier 5: an upload is never
+  assumed to be a manual. Videos default to `webinar`, pages to `community`.
+- **`prisma migrate dev --create-only` refuses a non-interactive terminal**
+  (a Claude Code session). Generate the SQL with `npx prisma migrate diff
+  --from-schema-datasource prisma/schema.prisma --to-schema-datamodel
+  prisma/schema.prisma --script` and name the folder with the current UTC
+  time — the same name `--create-only` would give, so order stays monotonic.
+- Gates that import documents set `BEACON_DOCUMENTS_DIR` to their temp folder,
+  so they never write into the real `storage/documents`.
 - Commit at meaningful checkpoints; branch `claude/work-dashboard-ticketing-zxi7p5`.
 
 ## Where we are / what's next

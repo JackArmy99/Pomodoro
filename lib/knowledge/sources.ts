@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { classification, defaultDocType } from "@/lib/knowledge/authority";
 import {
   canonicaliseYouTubeUrl,
   type VideoIdentity,
@@ -100,6 +101,7 @@ export async function enqueuePortalVideo(rawUrl: string): Promise<EnqueueResult 
     data: {
       provider: "tagetik",
       kind: "portal_video",
+      ...classification(defaultDocType("portal_video")),
       externalId,
       canonicalUrl,
       title: placeholderTitle(u),
@@ -137,6 +139,7 @@ async function enqueueIdentity(identity: VideoIdentity): Promise<EnqueueResult> 
     data: {
       provider: "youtube",
       kind: "youtube",
+      ...classification(defaultDocType("youtube")),
       externalId: identity.videoId,
       canonicalUrl: identity.canonicalUrl,
       jobs: { create: {} },
@@ -223,15 +226,37 @@ export async function enqueueAnalysis(sourceId: string): Promise<void> {
 export async function enqueueDocument(
   fileName: string,
   bytes: Buffer,
+  opts: {
+    docType?: string | null;
+    release?: string | null;
+    // An existing document this upload is a newer (or older) edition of —
+    // manuals are usually renamed per release, so the file name alone can't
+    // say that "Consolidation_2026.pdf" is a version of "…_2025.pdf".
+    versionOf?: string | null;
+  } = {},
 ): Promise<EnqueueResult> {
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { join, dirname } = await import("node:path");
   const { fileURLToPath } = await import("node:url");
   const { documentKey } = await import("@/lib/knowledge/documents");
+  const { classification, normaliseRelease } = await import("@/lib/knowledge/authority");
 
-  const key = documentKey(fileName);
+  let key = documentKey(fileName);
+  if (opts.versionOf) {
+    const parent = await prisma.knowledgeSource.findUnique({
+      where: { id: opts.versionOf },
+      select: { kind: true, provider: true, externalId: true },
+    });
+    if (!parent || parent.kind !== "document" || parent.provider !== "upload") {
+      return { ok: false, error: "The document to add a version to wasn't found." };
+    }
+    key = parent.externalId;
+  }
+  const release = normaliseRelease(opts.release);
+  const cls = opts.docType ? classification(opts.docType) : null;
   const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const dir = join(root, "storage", "documents");
+  // Overridable only so the test gates never write into the real storage.
+  const dir = process.env.BEACON_DOCUMENTS_DIR || join(root, "storage", "documents");
   await mkdir(dir, { recursive: true });
 
   // Named by document identity, not by upload: a revised manual with the same
@@ -260,13 +285,19 @@ export async function enqueueDocument(
         externalId: key,
         canonicalUrl: `file:${path}`,
         title: fileName,
+        ...(cls ?? classification(null)),
       },
     }));
 
   if (existing) {
     await prisma.knowledgeSource.update({
       where: { id: source.id },
-      data: { canonicalUrl: `file:${path}`, title: fileName },
+      data: {
+        canonicalUrl: `file:${path}`,
+        // A renamed edition keeps the document's existing name.
+        ...(opts.versionOf ? {} : { title: fileName }),
+        ...(cls ?? {}),
+      },
     });
   }
 
@@ -275,7 +306,12 @@ export async function enqueueDocument(
   });
   if (!active) {
     await prisma.researchJob.create({
-      data: { sourceId: source.id, kind: "document", stage: "read" },
+      data: {
+        sourceId: source.id,
+        kind: "document",
+        stage: "read",
+        detail: JSON.stringify({ release }),
+      },
     });
   }
 
@@ -318,6 +354,7 @@ export async function enqueuePage(
       data: {
         provider: "portal",
         kind: "page",
+        ...classification(defaultDocType("page")),
         externalId,
         canonicalUrl: url,
         // A placeholder until the first fetch reads the page's own <title>.

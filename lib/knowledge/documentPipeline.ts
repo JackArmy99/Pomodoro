@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { PrismaClient } from "@prisma/client";
-import { recordStep, noteStep } from "@/lib/knowledge/runLog";
+import { recordStep, noteStep, parseDetail } from "@/lib/knowledge/runLog";
 import {
   contentHash,
   extractPages,
@@ -107,10 +107,23 @@ export async function runDocumentJob(ctx: Ctx): Promise<void> {
   await setStage(prisma, job.id, "store");
   const hash = contentHash(segments);
 
+  // The release Jack gave at upload (held on the job until the version exists).
+  const jobRow = await prisma.researchJob.findUnique({
+    where: { id: job.id },
+    select: { detail: true },
+  });
+  const release = parseDetail(jobRow?.detail).release ?? null;
+
   const identical = await prisma.sourceVersion.findFirst({
     where: { sourceId: source.id, contentHash: hash },
   });
   if (identical) {
+    if (release && release !== identical.release) {
+      await prisma.sourceVersion.update({
+        where: { id: identical.id },
+        data: { release },
+      });
+    }
     // Re-uploading the same file is a no-op rather than a new version — so
     // re-importing by accident costs nothing and creates no false "changes".
     await prisma.knowledgeSource.update({
@@ -137,6 +150,7 @@ export async function runDocumentJob(ctx: Ctx): Promise<void> {
       transcriptMethod: "manual_import",
       coverageStatus: "complete",
       contentHash: hash,
+      release,
       limitations:
         extracted.unit === "section"
           ? "This format has no page numbers, so citations refer to sections."

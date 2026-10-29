@@ -78,7 +78,10 @@ export default async function ClientsPage({
                     {c.notes}
                   </p>
                 )}
-                <div className="mt-3 flex gap-3 text-xs text-slate-400">
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-400">
+                  <span className={c.tagetikRelease ? "text-slate-600" : "text-amber-700"}>
+                    Release {c.tagetikRelease ?? "unknown"}
+                  </span>
                   <span>{c._count.briefs} briefs</span>
                   <span>{c._count.opportunities} opportunities</span>
                 </div>

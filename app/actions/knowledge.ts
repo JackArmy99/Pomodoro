@@ -11,6 +11,8 @@ import {
   enqueueAnalysis,
   enqueuePageAssessment,
 } from "@/lib/knowledge/sources";
+import { prisma } from "@/lib/db";
+import { classification, isDocType, normaliseRelease } from "@/lib/knowledge/authority";
 
 // Submit a video for research. Returns immediately — the worker does the work,
 // so the browser never waits on a multi-minute job.
@@ -60,8 +62,17 @@ export async function submitDocument(formData: FormData) {
     redirect(`/knowledge?error=${encodeURIComponent("Choose a file to upload.")}`);
   }
 
+  const docType = String(formData.get("docType") ?? "");
+  if (!isDocType(docType)) {
+    redirect(`/knowledge?error=${encodeURIComponent("Choose what kind of document this is.")}`);
+  }
+
   const bytes = Buffer.from(await (file as File).arrayBuffer());
-  const result = await enqueueDocument((file as File).name, bytes);
+  const result = await enqueueDocument((file as File).name, bytes, {
+    docType,
+    release: String(formData.get("release") ?? ""),
+    versionOf: String(formData.get("versionOf") ?? "") || null,
+  });
   if (!result.ok) {
     redirect(`/knowledge?error=${encodeURIComponent(result.error)}`);
   }
@@ -160,5 +171,31 @@ export async function togglePortal(formData: FormData) {
   const on = String(formData.get("on") ?? "") === "true";
   const { setPortalEnabled } = await import("@/lib/portal/enabled");
   await setPortalEnabled(on);
+  revalidatePath("/knowledge");
+}
+
+// What kind of source this is (which sets its authority) and which Tagetik
+// release the version on screen documents. Free: nothing is re-read.
+export async function setSourceClassification(formData: FormData) {
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!sourceId) return;
+  const docType = String(formData.get("docType") ?? "");
+  const source = await prisma.knowledgeSource.findUnique({
+    where: { id: sourceId },
+    select: { currentVersionId: true },
+  });
+  if (!source) return;
+
+  await prisma.knowledgeSource.update({
+    where: { id: sourceId },
+    data: classification(isDocType(docType) ? docType : null),
+  });
+  if (source.currentVersionId && formData.has("release")) {
+    await prisma.sourceVersion.update({
+      where: { id: source.currentVersionId },
+      data: { release: normaliseRelease(formData.get("release")) },
+    });
+  }
+  revalidatePath(`/knowledge/${sourceId}`);
   revalidatePath("/knowledge");
 }

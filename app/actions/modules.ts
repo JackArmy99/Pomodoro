@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { normaliseRelease } from "@/lib/knowledge/authority";
 
 // Set a client's relationship to a module: "in_use", "licensed", or "none"
 // (which removes it). This powers the + / − editing on a client page.
@@ -70,4 +71,17 @@ export async function setClientHosting(formData: FormData) {
   await prisma.client.update({ where: { id: clientId }, data: { hosting } });
 
   revalidatePath(`/clients/${clientId}`);
+}
+
+// The Tagetik release a client runs. Blank (or "unknown") = not known yet.
+// Used to work out which clients a manual change affects.
+export async function setClientRelease(formData: FormData) {
+  const clientId = String(formData.get("clientId") ?? "");
+  if (!clientId) return;
+  const tagetikRelease = normaliseRelease(formData.get("tagetikRelease"));
+
+  await prisma.client.update({ where: { id: clientId }, data: { tagetikRelease } });
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/clients");
 }
