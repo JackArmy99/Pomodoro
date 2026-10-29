@@ -49,6 +49,13 @@ no real client names/PII in the app.
 
 ### Open threads (update this list every session)
 
+- **NOW (29 Oct): the Knowledge Base — read `docs/knowledge-base-plan.md`.**
+  Manuals are the backbone (module → topic tree from the manuals' own
+  contents); webinars/news slot in and never overwrite; every change is a
+  proposal Jack approves; an append-only audit log; clients linked by module +
+  Tagetik release. Pilot: Consolidation, two PDF versions. Build one milestone
+  at a time (M0 → M6) and stop after each for Jack to check.
+
 - **Done 16 Oct, on Jack's laptop:** `npm run doctor` passes for Sonnet 5 AND
   Haiku 5.5 (call, effort, JSON schema, web search with real results). Haiku
   5.5 accepts `web_search_20260209`. Doctor itself costs ~10p, not ~2p. Still
