@@ -71,6 +71,9 @@ no real client names/PII in the app.
   pinned to their exact heading, £0. **Waiting on Jack:** the old Consolidation
   PDF → import, build the tree (chapters only, or two levels), spot-check 20
   sections by page, approve. Then M2.
+- **UI streamlining plan (29 Oct): `docs/ui-streamline-plan.md`** — five
+  places (Today, Inbox, Library, Clients, Pipeline) + Setup, one Add box,
+  plain names, phases U1–U5. Awaiting Jack's go-ahead on the shape.
 
 - **Done 16 Oct, on Jack's laptop:** `npm run doctor` passes for Sonnet 5 AND
   Haiku 5.5 (call, effort, JSON schema, web search with real results). Haiku
